@@ -56,6 +56,45 @@ If tools do not appear, the server's stderr goes to
 Desktop granted Files and Folders access for `~/Downloads`, since the sandboxed
 child inherits Claude Desktop's TCC context.
 
+## The ps-mcp command
+
+    ps-mcp setup      wire up Claude Desktop and Codex, resolving binaries first
+    ps-mcp auth       sign in to Google in a browser
+    ps-mcp doctor     check binaries, manifest, auth, client configs
+    ps-mcp channel    show or set the release channel
+    ps-mcp serve      run the server in the foreground
+
+`setup` backs up any config it touches and edits only the `ps-mcp` entry, so
+other MCP servers are left exactly as they were.
+
+### Release channels
+
+Each channel is the head of the branch of the same name, and a build is promoted
+by merging forward:
+
+    dev  ->  prod  ->  stable
+
+- **dev** - every merge to the dev branch; expect breakage
+- **prod** - promoted from dev and soaking; broadly trustworthy
+- **stable** - promoted from prod after soaking; the most conservative
+
+Note the ordering: `stable` is the most conservative, not `prod`. A machine's
+channel lives in `etc/channel` (gitignored, machine-local) and defaults to
+`stable`.
+
+### Credentials
+
+Two different things get called credentials, and they are provisioned
+differently:
+
+- **User tools** (gws) authenticate as the person, through the CLI's own browser
+  flow. `ps-mcp auth` starts it. The resulting token is theirs, encrypted in
+  their home directory, never shared. gws does need an OAuth *client* to exist
+  before that flow can start -- that is the application's identity, not a user
+  credential, and it ships with the install.
+- **Service access** (AWS) uses IAM credentials placed in `~/.aws/credentials`
+  as a normal profile. Cloud API access is out of scope for now.
+
 ## Shell contexts
 
 macOS defaults to zsh, but three different shells are in play here. Mixing them

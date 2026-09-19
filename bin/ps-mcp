@@ -1,0 +1,22 @@
+#!/bin/sh
+# ps-mcp CLI: setup, doctor, auth, serve.
+#
+# A thin dispatcher, because the real work needs node and node's location is
+# whatever bin/ps-mcp-resolve recorded. POSIX sh only.
+set -eu
+APP_DIR=$(cd -- "$(dirname -- "$0")/.." && pwd -P)
+CONF="$APP_DIR/etc/binaries.conf"
+
+NODE=${PS_MCP_NODE:-}
+if [ -z "$NODE" ] && [ -f "$CONF" ]; then
+  NODE=$(sed -n 's|^node=||p' "$CONF" | head -1)
+fi
+if [ -z "$NODE" ] || [ ! -x "$NODE" ]; then
+  # `setup` is allowed to run before anything is resolved: find node once here.
+  NODE=$(command -v node 2>/dev/null || true)
+fi
+if [ -z "$NODE" ] || [ ! -x "$NODE" ]; then
+  echo "ps-mcp: cannot find node. Run bin/ps-mcp-resolve, or set PS_MCP_NODE." >&2
+  exit 1
+fi
+exec "$NODE" "$APP_DIR/src/cli.js" "$@"
