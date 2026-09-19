@@ -39,21 +39,46 @@ for name in $NEEDED; do
     printf '  %-10s NOT FOUND on PATH\n' "$name" >&2
     continue
   fi
-  # Follow symlinks: /usr/local/bin/gws is commonly a link into a version-specific
-  # install, and the sandbox has to grant the real location, not the link.
+  # Two different needs, and conflating them is a bug:
+  #
+  #   - To EXECUTE, record the stable path. /opt/homebrew/bin/ffprobe is a symlink
+  #     that Homebrew repoints on upgrade; its target
+  #     /opt/homebrew/Cellar/ffmpeg/9.0.1_1/bin/ffprobe is deleted by that upgrade.
+  #     Recording the resolved target pins us to a version that will disappear.
+  #   - To SANDBOX, grant the real location too, because a symlink may point
+  #     outside its own prefix -- /usr/local/bin/gws lands in ~/.nvm/...
+  #
+  # So: the link path is what we run, and both prefixes are granted.
   real=$(readlink -f -- "$path" 2>/dev/null || echo "$path")
-  printf '%s=%s\n' "$name" "$real" >> "$OUT"
-  printf '  %-10s %s\n' "$name" "$real" >&2
+  printf '%s=%s\n' "$name" "$path" >> "$OUT"
+  if [ "$real" != "$path" ]; then
+    printf '  %-10s %s -> %s\n' "$name" "$path" "$real" >&2
+  else
+    printf '  %-10s %s\n' "$name" "$path" >&2
+  fi
 
-  dir=$(dirname -- "$real")
-  case "$dir" in
-    */bin) prefix=$(cd -- "$dir/.." && pwd -P) ;;
-    *)     prefix=$dir ;;
-  esac
-  case " $prefixes " in *" $prefix "*) ;; *) prefixes="$prefixes $prefix" ;; esac
+  for p in "$path" "$real"; do
+    dir=$(dirname -- "$p")
+    case "$dir" in
+      */bin) prefix=$(cd -- "$dir/.." && pwd -P) ;;
+      *)     prefix=$dir ;;
+    esac
+    case " $prefixes " in *" $prefix "*) ;; *) prefixes="$prefixes $prefix" ;; esac
+  done
 done
 
-for p in $prefixes; do printf 'prefix=%s\n' "$p" >> "$OUT"; done
+# Collapse prefixes contained in another: granting /opt/homebrew already covers
+# /opt/homebrew/Cellar/ffmpeg/9.0.2. This keeps the list short (Seatbelt cannot
+# loop, so the launcher has a fixed number of slots) and, more importantly, drops
+# version-pinned prefixes that a later upgrade would invalidate.
+for p in $prefixes; do
+  contained=no
+  for q in $prefixes; do
+    [ "$p" = "$q" ] && continue
+    case "$p" in "$q"/*) contained=yes; break ;; esac
+  done
+  [ "$contained" = yes ] || printf 'prefix=%s\n' "$p" >> "$OUT"
+done
 
 if [ -n "$missing" ]; then
   printf '\nps-mcp: not found:%s\n' "$missing" >&2

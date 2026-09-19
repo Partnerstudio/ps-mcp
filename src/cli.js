@@ -140,6 +140,36 @@ function auth() {
 
 // --- doctor ----------------------------------------------------------------
 
+// First line of `<binary> --version`, trimmed to something readable.
+function versionOf(binary) {
+  for (const flag of ['--version', '-version']) {
+    try {
+      const out = execFileSync(binary, [flag], { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'ignore'] });
+      const line = out.split('\n')[0].trim();
+      if (line) return line.length > 60 ? `${line.slice(0, 60)}...` : line;
+    } catch { /* try the next flag */ }
+  }
+  return null;
+}
+
+// Which Homebrew formulae have updates waiting. Strictly read-only:
+// HOMEBREW_NO_AUTO_UPDATE stops brew from updating itself as a side effect of
+// being asked a question.
+function brewOutdated() {
+  try {
+    const out = execFileSync('brew', ['outdated', '--formula', '--json=v2'], {
+      encoding: 'utf8',
+      timeout: 30000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+      env: { ...process.env, HOMEBREW_NO_AUTO_UPDATE: '1', HOMEBREW_NO_ENV_HINTS: '1' },
+    });
+    const parsed = JSON.parse(out);
+    return new Map((parsed.formulae ?? []).map((f) => [f.name, f]));
+  } catch {
+    return null;
+  }
+}
+
 function gwsAuthState(gws) {
   try {
     const out = execFileSync(gws, ['auth', 'status'], { encoding: 'utf8', timeout: 15000 });
@@ -183,6 +213,26 @@ function doctor() {
   }
 
   console.log('');
+  const outdated = brewOutdated();
+  for (const [name, p] of resolved.paths) {
+    const version = versionOf(p);
+    if (!version) continue;
+    // Only Homebrew-managed tools can be checked this way; gws and a bundled
+    // node update through their own channels.
+    const formula = p.startsWith('/opt/homebrew/') || p.startsWith('/usr/local/')
+      ? ['ffprobe', 'ffmpeg'].includes(name) ? 'ffmpeg' : name
+      : null;
+    const pending = formula && outdated?.get(formula);
+    if (pending) {
+      warn(`${name.padEnd(8)} ${version}  -> ${pending.current_version} available (brew upgrade ${formula})`);
+    } else {
+      ok(`${name.padEnd(8)} ${version}`);
+    }
+  }
+  if (outdated === null) warn('could not ask brew about updates (not installed, or it failed)');
+  else if ([...outdated.keys()].length) console.log('        run `ps-mcp update` to apply');
+
+  console.log('');
   ok(`channel: ${currentChannel()} (${CHANNEL_HELP[currentChannel()]})`);
 
   const gws = resolved.paths.get('gws');
@@ -224,11 +274,114 @@ function doctor() {
   process.exitCode = failures === 0 ? 0 : 1;
 }
 
-const COMMANDS = { setup, auth, doctor, channel, serve: () => spawnSync(LAUNCHER, { stdio: 'inherit' }) };
+// --- update -----------------------------------------------------------------
+//
+// Keeping the tool binaries current is an explicit goal: ffmpeg in particular
+// ships security fixes regularly, and a stale copy is a liability rather than
+// merely out of date. Checking is read-only and safe to run often; applying is
+// a separate, explicit act.
+
+function npmLatest(pkg) {
+  try {
+    return execFileSync('npm', ['view', pkg, 'version'], {
+      encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'ignore'],
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
+function gwsInstalled(gws) {
+  const v = versionOf(gws);
+  const m = v && v.match(/([0-9]+\.[0-9]+\.[0-9]+)/);
+  return m ? m[1] : null;
+}
+
+function pendingUpdates() {
+  const { paths } = loadBinaries(CONF);
+  const pending = [];
+
+  const outdated = brewOutdated();
+  if (outdated) {
+    const formulae = new Set();
+    for (const [name, p] of paths) {
+      if (!p.startsWith('/opt/homebrew/') && !p.startsWith('/usr/local/')) continue;
+      formulae.add(['ffprobe', 'ffmpeg'].includes(name) ? 'ffmpeg' : name);
+    }
+    for (const formula of formulae) {
+      const hit = outdated.get(formula);
+      if (hit) {
+        pending.push({
+          what: formula,
+          from: (hit.installed_versions ?? []).join(', '),
+          to: hit.current_version,
+          how: ['brew', 'upgrade', formula],
+        });
+      }
+    }
+  }
+
+  const gws = paths.get('gws');
+  if (gws) {
+    const installed = gwsInstalled(gws);
+    const latest = npmLatest('@googleworkspace/cli');
+    if (installed && latest && installed !== latest) {
+      pending.push({
+        what: '@googleworkspace/cli',
+        from: installed,
+        to: latest,
+        how: ['npm', 'install', '-g', '@googleworkspace/cli'],
+      });
+    }
+  }
+  return pending;
+}
+
+function update() {
+  const check = process.argv.includes('--check');
+  console.log(check ? 'ps-mcp update --check\n' : 'ps-mcp update\n');
+
+  const pending = pendingUpdates();
+  if (pending.length === 0) {
+    ok('everything is current');
+    return;
+  }
+  for (const p of pending) {
+    warn(`${p.what}: ${p.from || 'installed'} -> ${p.to}`);
+  }
+  if (check) {
+    console.log('\nRun `ps-mcp update` to apply.');
+    return;
+  }
+
+  console.log('');
+  let failed = 0;
+  for (const p of pending) {
+    console.log(`  $ ${p.how.join(' ')}`);
+    const r = spawnSync(p.how[0], p.how.slice(1), { stdio: 'inherit' });
+    if (r.status !== 0) {
+      bad(`${p.what} failed`);
+      failed++;
+    }
+  }
+
+  // Paths can move between versions, so the record has to be refreshed. This is
+  // why the resolver records the stable symlink rather than its target: a brew
+  // upgrade normally leaves the recorded path valid, and this is belt and braces.
+  console.log('\n  re-resolving binaries...');
+  spawnSync(path.join(APP_DIR, 'bin', 'ps-mcp-resolve'), { stdio: 'inherit' });
+
+  // ps-mcp updates itself through its release channel, which is separate.
+  console.log(`\n  (ps-mcp itself follows the ${currentChannel()} channel and updates separately)`);
+  process.exitCode = failed === 0 ? 0 : 1;
+}
+
+const COMMANDS = { setup, auth, doctor, channel, update, serve: () => spawnSync(LAUNCHER, { stdio: 'inherit' }) };
 const command = process.argv[2];
 if (!command || !COMMANDS[command]) {
   console.log('usage: ps-mcp <setup|auth|doctor|serve>');
   console.log('       ps-mcp channel [dev|prod|stable]');
+  console.log('       ps-mcp update [--check]');
   process.exitCode = command ? 1 : 0;
 } else {
   COMMANDS[command]();
