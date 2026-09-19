@@ -55,14 +55,20 @@ export PS_MCP_WORK="$WORK"
 # state it, so changing a shell default cannot quietly redirect the tools.
 export AWS_PROFILE="${PS_MCP_AWS_PROFILE:-default}"
 
+# gws encrypts stored credentials. Keep the key in a file rather than the macOS
+# Keychain, which the sandbox deliberately cannot reach.
+export GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND=file
+
 exec /usr/bin/sandbox-exec -f "$PROFILE" \
   -D HOME="$HOME" \
   -D WORK="$WORK" \
   -D APP_DIR="$APP_DIR" \
   -D NODE_DIR="$NODE_DIR" \
+  -D NVM_DIR="$HOME/.nvm" \
   -D TMP="$TMP" \
   -D AWS_DIR="$HOME/.aws" \
   -D GWS_DIR="$HOME/.config/gws" \
+  -D GWS_SUPPORT_DIR="$HOME/Library/Application Support/gws" \
   -D HOME_LIBRARY="$HOME/Library" \
   "$NODE_REAL" \
     --permission \
@@ -71,6 +77,9 @@ exec /usr/bin/sandbox-exec -f "$PROFILE" \
     --allow-fs-read="$APP_DIR/*" \
     --allow-fs-read="$WORK/*" \
     --allow-fs-read="$HOME/.aws/*" \
+    --allow-fs-read="$HOME/Library/Application Support/gws/*" \
+    --allow-fs-read="$NODE_DIR/*" \
+    --allow-fs-read="$HOME/.nvm/*" \
     --allow-fs-read="/opt/homebrew/*" \
     --allow-fs-read="/usr/bin/*" \
     --allow-fs-read="/usr/local/bin/*" \

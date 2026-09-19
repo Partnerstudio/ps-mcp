@@ -189,8 +189,27 @@ describe('parseManifest, sdk tools', () => {
     const names = tools.map((t) => t.name);
     for (const expected of S3_TOOL_NAMES) assert.ok(names.includes(expected), `${expected} missing`);
     assert.equal(s3.presignMaxSeconds, 86_400);
-    // the only destructive tool must be the delete
-    const destructive = tools.filter((t) => t.hints.destructive).map((t) => t.name);
-    assert.deepEqual(destructive, ['s3_delete']);
+
+    // Invariants that must hold however many tools are added, rather than a
+    // hard-coded list that needs editing every time one appears.
+    const byName = new Map(tools.map((t) => [t.name, t]));
+    assert.equal(byName.get('s3_delete').hints.destructive, true);
+    for (const tool of tools) {
+      if (tool.hints.readOnly) {
+        assert.equal(tool.hints.destructive, false,
+          `${tool.name} is readOnly but also destructive`);
+      }
+      if (tool.name.endsWith('_read')) {
+        assert.equal(tool.hints.readOnly, true, `${tool.name} should be readOnly`);
+        // a read tool must not expose a mutating method
+        const method = tool.params.find((p) => p.name === 'method');
+        if (method?.values) {
+          for (const v of method.values) {
+            assert.ok(/^(get|list|search|batchGet|download|export)/.test(v),
+              `${tool.name} exposes non-read method ${v}`);
+          }
+        }
+      }
+    }
   });
 });

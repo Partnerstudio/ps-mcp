@@ -77,10 +77,20 @@
 
 ;; ------------------------------------------- narrow re-allows (dot paths) ---
 ;; Below the denies on purpose: last match wins.
-(allow file-read* process-exec (subpath (param "NODE_DIR")))   ; nvm lives in ~/.nvm
+(allow file-read* process-exec (subpath (param "NODE_DIR")))   ; the node we run
+;; The whole nvm tree, not just the running version: globally installed CLIs such
+;; as gws live under some version's prefix, and /usr/local/bin/<cli> is usually a
+;; symlink into one that is NOT the version the launcher picked for node.
+(allow file-read* process-exec (subpath (param "NVM_DIR")))
 (allow file-read* (subpath (param "APP_DIR")))                 ; server + node_modules
 (allow file-read* (subpath (param "AWS_DIR")))                 ; ~/.aws, read-only
-(allow file-read* file-write* (subpath (param "GWS_DIR")))     ; ~/.config/gws
+(allow file-read* file-write* (subpath (param "GWS_DIR")))     ; ~/.config/gws, if used
+
+;; gws keeps its OAuth client secret, encrypted credentials and .encryption_key
+;; under ~/Library/Application Support/gws, so it needs a hole in the ~/Library
+;; deny above. Narrow on purpose: Keychains, Mail, Messages stay denied. This
+;; also re-allows the hidden .encryption_key, since it sits below both denies.
+(allow file-read* file-write* (subpath (param "GWS_SUPPORT_DIR")))
 
 ;; ---------------------------------------------------------------- scratch ---
 (allow file-read* file-write* (subpath (param "TMP")))

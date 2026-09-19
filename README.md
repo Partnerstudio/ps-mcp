@@ -112,6 +112,39 @@ in `etc/tools.yaml` (24h) regardless of what is requested, and the response
 reports the value actually used. The URL is signed for `GET` specifically --
 a `HEAD` against it fails the signature check with 403, which is not a bug.
 
+## Google Workspace tools
+
+Backed by the `gws` CLI, which is uniform: `gws <service> <resource> [sub] <method>
+--params JSON [--json BODY]`. That shape means full API coverage costs few tools.
+
+**Helpers** wrap the common operations with named flags, and are what to reach for
+first: `gmail_send`, `gmail_triage`, `calendar_agenda`, `calendar_create_event`,
+`drive_upload`, `sheets_get_range`, `sheets_append_row`, `docs_append_text`,
+`chat_send_message`, plus the cross-service `workflow_*` tools.
+
+**Generic tools** reach everything else, one read and one write per service:
+`gmail_read`/`gmail_write`, `calendar_*`, `drive_*`, `sheets_*`, `docs_*`,
+`slides_*`, `meet_*`, `tasks_*`, `people_*`, `chat_*`, `forms_*`, `keep_*`, and
+`admin_reports_read`. The split exists so the hints stay honest -- a read tool
+constrains `method` to an enum of read verbs and is `readOnly`, a write tool is
+not, and is `destructive` only where the service can actually delete.
+
+**`gws_schema`** returns the parameters and request body for any method, addressed
+as `service.resource.method` (e.g. `drive.files.list`). Use it rather than guessing.
+
+Two things worth knowing:
+
+- gws keeps credentials in `~/Library/Application Support/gws`, not `~/.config/gws`.
+  The Seatbelt profile therefore carves that one directory out of its `~/Library`
+  deny, and the launcher grants it to `node --permission` as well, because a
+  node-based child **inherits** the parent's permission flags.
+- `gws` is a `#!/usr/bin/env node` script, so the child environment must carry a
+  PATH containing node. `exec-tool.js` derives it from `process.execPath`; without
+  it every gws tool fails with a bare `env: node: No such file or directory`.
+
+Groups (the Admin SDK Directory API) is **not** in gws 0.8.0, so there are no
+Groups tools. The available services are the ones listed by `gws --help`.
+
 ## Adding a tool
 
 Add an entry to `etc/tools.yaml`. Structural mistakes fail at startup with a

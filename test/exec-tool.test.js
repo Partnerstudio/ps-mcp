@@ -98,6 +98,69 @@ describe('renderArgv', () => {
   });
 });
 
+describe('renderArgv, groups', () => {
+  const GROUPED = `
+version: 1
+binaries:
+  echo: /bin/echo
+tools:
+  - name: grouped
+    type: exec
+    binary: echo
+    title: Grouped
+    description: Optional flag pairs.
+    hints: { readOnly: true, destructive: false }
+    params:
+      - name: resource
+        type: string
+        required: true
+        description: Resource.
+      - name: params
+        type: string
+        description: Optional JSON params.
+      - name: body
+        type: string
+        description: Optional JSON body.
+    argv:
+      - "{{resource}}"
+      - ["--params", "{{params}}"]
+      - ["--json", "{{body}}"]
+`;
+  const [grouped] = parseManifest(GROUPED, { file: 't.yaml' }).tools;
+
+  it('normalizes a bare string into a group of one', () => {
+    assert.deepEqual(grouped.argv[0], ['{{resource}}']);
+  });
+
+  // The point of groups: a dangling --params with no value would break the CLI.
+  it('drops the whole flag pair when the value is absent', () => {
+    const argv = renderArgv(grouped, { resource: 'users' });
+    assert.deepEqual(argv, ['users']);
+  });
+
+  it('emits both tokens of a pair when the value is supplied', () => {
+    const argv = renderArgv(grouped, { resource: 'users', params: '{"a":1}' });
+    assert.deepEqual(argv, ['users', '--params', '{"a":1}']);
+  });
+
+  it('keeps JSON with spaces and quotes as one argv element', () => {
+    const json = '{"q": "from:me subject:\'x y\'"}';
+    const argv = renderArgv(grouped, { resource: 'users', params: json });
+    assert.equal(argv.length, 3);
+    assert.equal(argv[2], json);
+  });
+
+  it('resolves each pair independently', () => {
+    const argv = renderArgv(grouped, { resource: 'users', body: '{"b":2}' });
+    assert.deepEqual(argv, ['users', '--json', '{"b":2}']);
+  });
+
+  it('rejects an argv entry that is neither string nor list of strings', () => {
+    const bad = GROUPED.replace('      - "{{resource}}"', '      - 42');
+    assert.throws(() => parseManifest(bad, { file: 't.yaml' }), /must be a string or a non-empty list of strings/);
+  });
+});
+
 describe('runExecTool', () => {
   it('runs the binary and returns its output', async () => {
     const result = await runExecTool(tool, { path: 'clips/promo.mov', label: 'hi' }, { root });
@@ -119,7 +182,7 @@ describe('runExecTool', () => {
   });
 
   it('reports a timeout as a tool error', async () => {
-    const slow = { ...tool, binaryPath: '/bin/sleep', binaryName: 'sleep', timeoutMs: 120, argv: ['5'], params: [] };
+    const slow = { ...tool, binaryPath: '/bin/sleep', binaryName: 'sleep', timeoutMs: 120, argv: [['5']], params: [] };
     const result = await runExecTool(slow, {}, { root });
     assert.equal(result.isError, true);
     assert.match(result.content[0].text, /timed out after 120 ms/);

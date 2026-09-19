@@ -81,17 +81,30 @@ function validateExec(raw, where, binaries, params, byName) {
   if (typeof binary !== 'string' || !binaries[binary]) {
     fail(where, `\`binary\` must name a key in top-level \`binaries\` (got ${JSON.stringify(binary)})`);
   }
-  if (!Array.isArray(raw.argv) || raw.argv.some((t) => typeof t !== 'string')) {
-    fail(where, '`argv` must be a list of strings');
-  }
+  if (!Array.isArray(raw.argv)) fail(where, '`argv` must be a list');
+
+  // An entry is either a single token or a GROUP of tokens that stand or fall
+  // together. A bare string is normalized to a group of one, so both forms share
+  // exactly the same rule: drop the whole group if any placeholder in it is
+  // missing. Groups are what make an optional flag pair work -- ["--params",
+  // "{{params}}"] must not leave a dangling --params behind.
+  const argv = raw.argv.map((entry, i) => {
+    if (typeof entry === 'string') return [entry];
+    if (Array.isArray(entry) && entry.length > 0 && entry.every((t) => typeof t === 'string')) {
+      return [...entry];
+    }
+    return fail(where, `argv[${i}] must be a string or a non-empty list of strings`);
+  });
 
   // Every placeholder must name a declared param, and every declared param must
   // be reachable from argv -- an unreferenced param is silently dead otherwise.
   const referenced = new Set();
-  for (const token of raw.argv) {
-    for (const ref of placeholdersIn(token)) {
-      if (!byName.has(ref)) fail(where, `argv references undeclared param \`${ref}\``);
-      referenced.add(ref);
+  for (const group of argv) {
+    for (const token of group) {
+      for (const ref of placeholdersIn(token)) {
+        if (!byName.has(ref)) fail(where, `argv references undeclared param \`${ref}\``);
+        referenced.add(ref);
+      }
     }
   }
   for (const param of params) {
@@ -103,7 +116,7 @@ function validateExec(raw, where, binaries, params, byName) {
   const output = raw.output ?? 'text';
   if (!OUTPUTS.has(output)) fail(where, `\`output\` must be one of ${[...OUTPUTS].join(', ')}`);
 
-  return { binaryName: binary, binaryPath: binaries[binary], argv: [...raw.argv], output };
+  return { binaryName: binary, binaryPath: binaries[binary], argv, output };
 }
 
 function validateSdk(raw, where, sdkHandlers) {
