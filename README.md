@@ -43,6 +43,28 @@ If tools do not appear, the server's stderr goes to
 Desktop granted Files and Folders access for `~/Downloads`, since the sandboxed
 child inherits Claude Desktop's TCC context.
 
+## Shell contexts
+
+macOS defaults to zsh, but three different shells are in play here. Mixing them
+up is the single easiest way to break something:
+
+| Where | Shell | Consequence |
+|---|---|---|
+| Your terminal / an agent's Bash tool | `/bin/zsh` | unquoted `$VAR` does **not** word-split; `USERNAME`, `PATH`, `status` and friends are reserved and silently unassignable |
+| `launcher/ps-mcp-launch` | `#!/bin/sh` = bash 3.2 POSIX mode | keep it POSIX: no arrays, no `[[ ]]`, no `local` |
+| Tools run by the server | none | `execFile` with an argv array |
+
+The server never spawns a shell. That is why `{{param}}` interpolation is safe:
+a value with spaces, quotes or a `;` stays exactly one argv element. Adding
+`shell: true` or an `exec()` with a command string would turn every tool
+parameter into an injection vector.
+
+When running commands by hand against AWS or anything outside the repo, quote
+every expansion and assert a variable took before the call that mutates:
+
+    IAM_USER=ps-mcp-test
+    [ "$IAM_USER" = "ps-mcp-test" ] || { echo "ABORT"; exit 1; }
+
 ## The work root
 
 Tools may only touch paths under the work root: `$PS_MCP_WORK`, defaulting to
