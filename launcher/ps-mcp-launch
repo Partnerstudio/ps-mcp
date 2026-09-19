@@ -1,0 +1,74 @@
+#!/bin/sh
+# Point Claude Desktop / Claude Code / Codex at this file, not at node.
+#
+# Claude Desktop spawns MCP servers with a near-empty environment, so every path
+# here is resolved absolutely rather than looked up on PATH. The server is then
+# exec'd under Seatbelt (kernel-level disk isolation) and node's own permission
+# model (JS-level fs isolation).
+set -eu
+
+APP_DIR=$(cd -- "$(dirname -- "$0")/.." && pwd -P)
+PROFILE="$APP_DIR/etc/ps-mcp.sb"
+
+# Work root: the one subtree tools may read and write.
+WORK_REQUESTED=${PS_MCP_WORK:-$HOME}
+if [ ! -d "$WORK_REQUESTED" ]; then
+  echo "ps-mcp: work root does not exist: $WORK_REQUESTED" >&2
+  exit 1
+fi
+WORK=$(cd -- "$WORK_REQUESTED" && pwd -P)
+
+TMP=$(cd -- "${TMPDIR:-/tmp}" && pwd -P)
+
+# node is not on PATH under Claude Desktop; probe the usual installs.
+NODE_BIN=${PS_MCP_NODE:-}
+if [ -z "$NODE_BIN" ]; then
+  for candidate in \
+    "$(command -v node 2>/dev/null || true)" \
+    /opt/homebrew/bin/node \
+    /usr/local/bin/node \
+    "$HOME/.nvm/versions/node/v24.14.0/bin/node"
+  do
+    if [ -n "$candidate" ] && [ -x "$candidate" ]; then NODE_BIN=$candidate; break; fi
+  done
+fi
+if [ -z "$NODE_BIN" ]; then
+  echo "ps-mcp: could not find node; set PS_MCP_NODE to an absolute path" >&2
+  exit 1
+fi
+
+# Resolve symlinks before computing the prefix. /usr/local/bin/node is commonly
+# a symlink into ~/.nvm/..., and the sandbox has to allow the REAL location --
+# granting exec on /usr/local would leave the target in a denied dot-directory.
+NODE_REAL=$(readlink -f -- "$NODE_BIN" 2>/dev/null || true)
+if [ -z "$NODE_REAL" ] || [ ! -x "$NODE_REAL" ]; then
+  NODE_REAL=$(cd -- "$(dirname -- "$NODE_BIN")" && pwd -P)/$(basename -- "$NODE_BIN")
+fi
+
+# Installation prefix of that node, e.g. ~/.nvm/versions/node/v24.14.0
+NODE_DIR=$(cd -- "$(dirname -- "$NODE_REAL")/.." && pwd -P)
+
+export PS_MCP_WORK="$WORK"
+
+exec /usr/bin/sandbox-exec -f "$PROFILE" \
+  -D HOME="$HOME" \
+  -D WORK="$WORK" \
+  -D APP_DIR="$APP_DIR" \
+  -D NODE_DIR="$NODE_DIR" \
+  -D TMP="$TMP" \
+  -D AWS_DIR="$HOME/.aws" \
+  -D GWS_DIR="$HOME/.config/gws" \
+  -D HOME_LIBRARY="$HOME/Library" \
+  "$NODE_REAL" \
+    --permission \
+    --allow-child-process \
+    --allow-fs-read="$APP_DIR" \
+    --allow-fs-read="$APP_DIR/*" \
+    --allow-fs-read="$WORK/*" \
+    --allow-fs-read="/opt/homebrew/*" \
+    --allow-fs-read="/usr/bin/*" \
+    --allow-fs-read="/usr/local/bin/*" \
+    --allow-fs-read="/bin/*" \
+    --allow-fs-write="$WORK/*" \
+    --allow-fs-write="$TMP/*" \
+    "$APP_DIR/src/server.js" "$@"

@@ -1,0 +1,86 @@
+;; ps-mcp Seatbelt profile -- deny by default.
+;;
+;; Threat model is disk isolation: a compromised dependency, or a model talked
+;; into it, must not read credentials, mail or documents outside the work root.
+;; Outbound network stays open because S3 and gws need it.
+;;
+;; Two things about SBPL that are easy to get wrong and are load-bearing here:
+;;   1. The LAST matching rule wins, so the denies sit below the work-root allow
+;;      and the narrow re-allows sit below the denies.
+;;   2. `file*` is NOT an operation wildcard. It parses, matches nothing, and
+;;      silently grants everything it was meant to deny. Always spell out
+;;      `file-read*` and `file-write*`.
+;;
+;; Parameters come from sandbox-exec -D in launcher/ps-mcp-launch.
+
+(version 1)
+(deny default)
+
+;; ---------------------------------------------------------------- process ---
+(allow process-fork)
+(allow signal (target self))
+(allow sysctl-read)
+(allow mach-lookup)
+
+;; Existence and stat of any path; content stays denied. The kernel needs this
+;; to walk the ancestors of paths that ARE allowed.
+(allow file-read-metadata)
+
+;; ---------------------------------------------------------------- devices ---
+(allow file-read* file-write*
+  (literal "/dev/null")
+  (literal "/dev/zero")
+  (literal "/dev/random")
+  (literal "/dev/urandom")
+  (literal "/dev/dtracehelper")
+  (literal "/dev/tty"))
+(allow file-ioctl (literal "/dev/tty"))
+
+;; ---------------------------------------------------------------- network ---
+(allow network-outbound)
+(allow system-socket)
+
+;; -------------------------------------------------------------- toolchain ---
+;; dyld reads the root directory itself on startup. file-read-metadata is not
+;; enough; without this, every exec dies with SIGABRT and no message.
+(allow file-read* (literal "/"))
+
+(allow file-read* process-exec
+  (subpath "/usr/lib")
+  (subpath "/usr/bin")
+  (subpath "/bin")
+  (subpath "/System"))
+(allow file-read*
+  (subpath "/usr/share")
+  (subpath "/private/var/db/timezone")
+  (literal "/private/etc/localtime")
+  (literal "/private/etc/hosts")
+  (literal "/private/etc/resolv.conf")
+  (subpath "/private/etc/ssl"))
+
+;; ffmpeg and ffprobe: /opt/homebrew/bin/* are symlinks into Cellar/, so the
+;; whole prefix has to be readable and executable.
+(allow file-read* process-exec (subpath "/opt/homebrew"))
+
+;; -------------------------------------------------------------- work root ---
+(allow file-read* file-write* (subpath (param "WORK")))
+
+;; Hidden entries anywhere under the work root: ~/.ssh, ~/.aws, ~/.gnupg, a
+;; stray .env in a project directory. Scoped with require-all so it cannot
+;; clobber the toolchain allows above.
+(deny file-read* file-write*
+  (require-all (subpath (param "WORK")) (regex #"/\.")))
+
+;; ~/Library carries no leading dot but holds Keychains, Mail, Messages and
+;; Application Support, so it is excluded explicitly.
+(deny file-read* file-write* (subpath (param "HOME_LIBRARY")))
+
+;; ------------------------------------------- narrow re-allows (dot paths) ---
+;; Below the denies on purpose: last match wins.
+(allow file-read* process-exec (subpath (param "NODE_DIR")))   ; nvm lives in ~/.nvm
+(allow file-read* (subpath (param "APP_DIR")))                 ; server + node_modules
+(allow file-read* (subpath (param "AWS_DIR")))                 ; ~/.aws, read-only
+(allow file-read* file-write* (subpath (param "GWS_DIR")))     ; ~/.config/gws
+
+;; ---------------------------------------------------------------- scratch ---
+(allow file-read* file-write* (subpath (param "TMP")))

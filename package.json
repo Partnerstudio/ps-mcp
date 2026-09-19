@@ -1,13 +1,20 @@
 {
-  "name": "ffwd",
-  "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
-  "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+  "name": "ps-mcp",
+  "version": "0.1.0",
+  "description": "Local MCP server exposing CLI tools (ffmpeg, gws, S3) to Claude Desktop, Claude Code and Codex on Partnerstudio Macs.",
+  "type": "module",
+  "private": true,
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs"
+  "scripts": {
+    "test": "node --test test/*.test.js",
+    "serve": "node src/server.js",
+    "serve:sandboxed": "launcher/ps-mcp-launch"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.21.1",
+    "yaml": "^2.8.1"
+  }
 }

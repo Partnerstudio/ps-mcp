@@ -1,0 +1,51 @@
+# ps-mcp tool manifest.
+#
+# Two entry types are planned: `exec` (argv template, run with execFile, never a
+# shell string) and `sdk` (S3 tools implemented in code). Only `exec` is
+# implemented so far.
+#
+# argv rules:
+#   - every entry is one execFile argument; interpolation happens inside a
+#     token and never splits one, so there is no quoting to get wrong
+#   - "{{param}}" is replaced by that argument's value
+#   - a token referencing a param that was not supplied is dropped whole
+#
+# Params marked `path: true` are canonicalised and must resolve inside the work
+# root ($PS_MCP_WORK, default $HOME), excluding hidden entries and ~/Library.
+
+version: 1
+
+binaries:
+  ffprobe: /opt/homebrew/bin/ffprobe
+  ffmpeg: /opt/homebrew/bin/ffmpeg
+
+tools:
+  - name: ffprobe_info
+    type: exec
+    binary: ffprobe
+    title: Probe media file
+    description: >-
+      Return container, stream and format metadata for a local audio or video
+      file as JSON: duration, bitrate, codecs, resolution, frame rate, channel
+      layout and container tags. Reads the file only; never writes.
+    timeoutMs: 30000
+    hints:
+      readOnly: true
+      destructive: false
+    output: json
+    params:
+      - name: path
+        type: string
+        required: true
+        path: true
+        description: >-
+          Path to the media file, absolute or relative to the work root.
+          A leading ~ is expanded.
+    argv:
+      - "-v"
+      - "error"
+      - "-print_format"
+      - "json"
+      - "-show_format"
+      - "-show_streams"
+      - "{{path}}"
