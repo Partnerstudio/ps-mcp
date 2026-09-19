@@ -190,8 +190,9 @@ tools:
         required: true
         description: Full object key to delete.
 
+  # BEGIN GENERATED gws service tools -- regenerate with `npm run gen:gws`
   # --- Google Workspace (gws) ----------------------------------------------
-  # Generated against gws 0.8.0: 408 methods across 15 services.
+  # Generated against gws 0.8.0: 174 methods across 13 services.
   # Each service gets a read tool and a write tool so readOnly/destructive
   # hints stay honest; together they reach the whole API. gws_schema lets the
   # model look up the exact parameters for any method.
@@ -201,9 +202,9 @@ tools:
     binary: gws
     title: Read Gmail
     description: >-
-      Read-only Gmail API calls: messages, threads, drafts, labels, filters and mailbox settings.
-      Never modifies anything. Pass parameters as a JSON string in
-      `params`; use gws_schema for the exact parameter names.
+      Read-only Gmail API calls: messages, threads, drafts, labels, filters and
+      mailbox settings. Never modifies anything. Pass parameters as a JSON
+      string in `params`; use gws_schema for the exact parameter names.
     timeoutMs: 60000
     hints:
       readOnly: true
@@ -251,10 +252,10 @@ tools:
     binary: gws
     title: Write Gmail
     description: >-
-      Mutating Gmail API calls: messages, threads, drafts, labels, filters and mailbox settings.
-      Includes delete methods, which permanently remove data.
-      Pass parameters as JSON in `params` and the request body as JSON
-      in `body`. Use gws_schema to check what a method expects.
+      Mutating Gmail API calls: messages, threads, drafts, labels, filters and
+      mailbox settings. Includes delete methods, which permanently remove data.
+      Pass parameters as JSON in `params` and the request body as JSON in
+      `body`. Use gws_schema to check what a method expects.
     timeoutMs: 60000
     hints:
       readOnly: false
@@ -308,9 +309,9 @@ tools:
     binary: gws
     title: Read Calendar
     description: >-
-      Read-only Calendar API calls: events, calendars, calendar list entries, ACLs and free/busy.
-      Never modifies anything. Pass parameters as a JSON string in
-      `params`; use gws_schema for the exact parameter names.
+      Read-only Calendar API calls: events, calendars, calendar list entries,
+      ACLs and free/busy. Never modifies anything. Pass parameters as a JSON
+      string in `params`; use gws_schema for the exact parameter names.
     timeoutMs: 60000
     hints:
       readOnly: true
@@ -358,10 +359,10 @@ tools:
     binary: gws
     title: Write Calendar
     description: >-
-      Mutating Calendar API calls: events, calendars, calendar list entries, ACLs and free/busy.
-      Includes delete methods, which permanently remove data.
-      Pass parameters as JSON in `params` and the request body as JSON
-      in `body`. Use gws_schema to check what a method expects.
+      Mutating Calendar API calls: events, calendars, calendar list entries,
+      ACLs and free/busy. Includes delete methods, which permanently remove
+      data. Pass parameters as JSON in `params` and the request body as JSON in
+      `body`. Use gws_schema to check what a method expects.
     timeoutMs: 60000
     hints:
       readOnly: false
@@ -415,9 +416,9 @@ tools:
     binary: gws
     title: Read Drive
     description: >-
-      Read-only Drive API calls: files, folders, shared drives, permissions, comments and revisions.
-      Never modifies anything. Pass parameters as a JSON string in
-      `params`; use gws_schema for the exact parameter names.
+      Read-only Drive API calls: files, folders, shared drives, permissions,
+      comments and revisions. Never modifies anything. Pass parameters as a JSON
+      string in `params`; use gws_schema for the exact parameter names.
     timeoutMs: 60000
     hints:
       readOnly: true
@@ -465,10 +466,10 @@ tools:
     binary: gws
     title: Write Drive
     description: >-
-      Mutating Drive API calls: files, folders, shared drives, permissions, comments and revisions.
-      Includes delete methods, which permanently remove data.
-      Pass parameters as JSON in `params` and the request body as JSON
-      in `body`. Use gws_schema to check what a method expects.
+      Mutating Drive API calls: files, folders, shared drives, permissions,
+      comments and revisions. Includes delete methods, which permanently remove
+      data. Pass parameters as JSON in `params` and the request body as JSON in
+      `body`. Use gws_schema to check what a method expects.
     timeoutMs: 60000
     hints:
       readOnly: false
@@ -523,8 +524,8 @@ tools:
     title: Read Sheets
     description: >-
       Read-only Sheets API calls: spreadsheets, values, and developer metadata.
-      Never modifies anything. Pass parameters as a JSON string in
-      `params`; use gws_schema for the exact parameter names.
+      Never modifies anything. Pass parameters as a JSON string in `params`; use
+      gws_schema for the exact parameter names.
     timeoutMs: 60000
     hints:
       readOnly: true
@@ -573,9 +574,9 @@ tools:
     title: Write Sheets
     description: >-
       Mutating Sheets API calls: spreadsheets, values, and developer metadata.
-      Includes delete methods, which permanently remove data.
-      Pass parameters as JSON in `params` and the request body as JSON
-      in `body`. Use gws_schema to check what a method expects.
+      Includes delete methods, which permanently remove data. Pass parameters as
+      JSON in `params` and the request body as JSON in `body`. Use gws_schema to
+      check what a method expects.
     timeoutMs: 60000
     hints:
       readOnly: false
@@ -629,9 +630,9 @@ tools:
     binary: gws
     title: Read Docs
     description: >-
-      Read-only Docs API calls: documents and their structured content.
-      Never modifies anything. Pass parameters as a JSON string in
-      `params`; use gws_schema for the exact parameter names.
+      Read-only Docs API calls: documents and their structured content. Never
+      modifies anything. Pass parameters as a JSON string in `params`; use
+      gws_schema for the exact parameter names.
     timeoutMs: 60000
     hints:
       readOnly: true
@@ -679,10 +680,9 @@ tools:
     binary: gws
     title: Write Docs
     description: >-
-      Mutating Docs API calls: documents and their structured content.
-      Creates and updates data.
-      Pass parameters as JSON in `params` and the request body as JSON
-      in `body`. Use gws_schema to check what a method expects.
+      Mutating Docs API calls: documents and their structured content. Creates
+      and updates data. Pass parameters as JSON in `params` and the request body
+      as JSON in `body`. Use gws_schema to check what a method expects.
     timeoutMs: 60000
     hints:
       readOnly: false
@@ -736,9 +736,9 @@ tools:
     binary: gws
     title: Read Slides
     description: >-
-      Read-only Slides API calls: presentations, pages and page elements.
-      Never modifies anything. Pass parameters as a JSON string in
-      `params`; use gws_schema for the exact parameter names.
+      Read-only Slides API calls: presentations, pages and page elements. Never
+      modifies anything. Pass parameters as a JSON string in `params`; use
+      gws_schema for the exact parameter names.
     timeoutMs: 60000
     hints:
       readOnly: true
@@ -786,10 +786,9 @@ tools:
     binary: gws
     title: Write Slides
     description: >-
-      Mutating Slides API calls: presentations, pages and page elements.
-      Creates and updates data.
-      Pass parameters as JSON in `params` and the request body as JSON
-      in `body`. Use gws_schema to check what a method expects.
+      Mutating Slides API calls: presentations, pages and page elements. Creates
+      and updates data. Pass parameters as JSON in `params` and the request body
+      as JSON in `body`. Use gws_schema to check what a method expects.
     timeoutMs: 60000
     hints:
       readOnly: false
@@ -843,8 +842,8 @@ tools:
     binary: gws
     title: Read Meet
     description: >-
-      Read-only Meet API calls: conference records, participants, recordings and transcripts.
-      Never modifies anything. Pass parameters as a JSON string in
+      Read-only Meet API calls: conference records, participants, recordings and
+      transcripts. Never modifies anything. Pass parameters as a JSON string in
       `params`; use gws_schema for the exact parameter names.
     timeoutMs: 60000
     hints:
@@ -893,10 +892,10 @@ tools:
     binary: gws
     title: Write Meet
     description: >-
-      Mutating Meet API calls: conference records, participants, recordings and transcripts.
-      Includes delete methods, which permanently remove data.
-      Pass parameters as JSON in `params` and the request body as JSON
-      in `body`. Use gws_schema to check what a method expects.
+      Mutating Meet API calls: conference records, participants, recordings and
+      transcripts. Includes delete methods, which permanently remove data. Pass
+      parameters as JSON in `params` and the request body as JSON in `body`. Use
+      gws_schema to check what a method expects.
     timeoutMs: 60000
     hints:
       readOnly: false
@@ -950,9 +949,9 @@ tools:
     binary: gws
     title: Read Tasks
     description: >-
-      Read-only Tasks API calls: task lists and tasks.
-      Never modifies anything. Pass parameters as a JSON string in
-      `params`; use gws_schema for the exact parameter names.
+      Read-only Tasks API calls: task lists and tasks. Never modifies anything.
+      Pass parameters as a JSON string in `params`; use gws_schema for the exact
+      parameter names.
     timeoutMs: 60000
     hints:
       readOnly: true
@@ -1000,10 +999,10 @@ tools:
     binary: gws
     title: Write Tasks
     description: >-
-      Mutating Tasks API calls: task lists and tasks.
-      Includes delete methods, which permanently remove data.
-      Pass parameters as JSON in `params` and the request body as JSON
-      in `body`. Use gws_schema to check what a method expects.
+      Mutating Tasks API calls: task lists and tasks. Includes delete methods,
+      which permanently remove data. Pass parameters as JSON in `params` and the
+      request body as JSON in `body`. Use gws_schema to check what a method
+      expects.
     timeoutMs: 60000
     hints:
       readOnly: false
@@ -1057,8 +1056,8 @@ tools:
     binary: gws
     title: Read Contacts
     description: >-
-      Read-only Contacts API calls: contacts, contact groups and profile data (People API).
-      Never modifies anything. Pass parameters as a JSON string in
+      Read-only Contacts API calls: contacts, contact groups and profile data
+      (People API). Never modifies anything. Pass parameters as a JSON string in
       `params`; use gws_schema for the exact parameter names.
     timeoutMs: 60000
     hints:
@@ -1107,10 +1106,10 @@ tools:
     binary: gws
     title: Write Contacts
     description: >-
-      Mutating Contacts API calls: contacts, contact groups and profile data (People API).
-      Includes delete methods, which permanently remove data.
-      Pass parameters as JSON in `params` and the request body as JSON
-      in `body`. Use gws_schema to check what a method expects.
+      Mutating Contacts API calls: contacts, contact groups and profile data
+      (People API). Includes delete methods, which permanently remove data. Pass
+      parameters as JSON in `params` and the request body as JSON in `body`. Use
+      gws_schema to check what a method expects.
     timeoutMs: 60000
     hints:
       readOnly: false
@@ -1165,8 +1164,8 @@ tools:
     title: Read Chat
     description: >-
       Read-only Chat API calls: spaces, memberships, messages and reactions.
-      Never modifies anything. Pass parameters as a JSON string in
-      `params`; use gws_schema for the exact parameter names.
+      Never modifies anything. Pass parameters as a JSON string in `params`; use
+      gws_schema for the exact parameter names.
     timeoutMs: 60000
     hints:
       readOnly: true
@@ -1215,9 +1214,9 @@ tools:
     title: Write Chat
     description: >-
       Mutating Chat API calls: spaces, memberships, messages and reactions.
-      Includes delete methods, which permanently remove data.
-      Pass parameters as JSON in `params` and the request body as JSON
-      in `body`. Use gws_schema to check what a method expects.
+      Includes delete methods, which permanently remove data. Pass parameters as
+      JSON in `params` and the request body as JSON in `body`. Use gws_schema to
+      check what a method expects.
     timeoutMs: 60000
     hints:
       readOnly: false
@@ -1271,9 +1270,9 @@ tools:
     binary: gws
     title: Read Forms
     description: >-
-      Read-only Forms API calls: forms, items and responses.
-      Never modifies anything. Pass parameters as a JSON string in
-      `params`; use gws_schema for the exact parameter names.
+      Read-only Forms API calls: forms, items and responses. Never modifies
+      anything. Pass parameters as a JSON string in `params`; use gws_schema for
+      the exact parameter names.
     timeoutMs: 60000
     hints:
       readOnly: true
@@ -1321,10 +1320,10 @@ tools:
     binary: gws
     title: Write Forms
     description: >-
-      Mutating Forms API calls: forms, items and responses.
-      Includes delete methods, which permanently remove data.
-      Pass parameters as JSON in `params` and the request body as JSON
-      in `body`. Use gws_schema to check what a method expects.
+      Mutating Forms API calls: forms, items and responses. Includes delete
+      methods, which permanently remove data. Pass parameters as JSON in
+      `params` and the request body as JSON in `body`. Use gws_schema to check
+      what a method expects.
     timeoutMs: 60000
     hints:
       readOnly: false
@@ -1378,9 +1377,9 @@ tools:
     binary: gws
     title: Read Keep
     description: >-
-      Read-only Keep API calls: notes, attachments and permissions.
-      Never modifies anything. Pass parameters as a JSON string in
-      `params`; use gws_schema for the exact parameter names.
+      Read-only Keep API calls: notes, attachments and permissions. Never
+      modifies anything. Pass parameters as a JSON string in `params`; use
+      gws_schema for the exact parameter names.
     timeoutMs: 60000
     hints:
       readOnly: true
@@ -1428,10 +1427,10 @@ tools:
     binary: gws
     title: Write Keep
     description: >-
-      Mutating Keep API calls: notes, attachments and permissions.
-      Includes delete methods, which permanently remove data.
-      Pass parameters as JSON in `params` and the request body as JSON
-      in `body`. Use gws_schema to check what a method expects.
+      Mutating Keep API calls: notes, attachments and permissions. Includes
+      delete methods, which permanently remove data. Pass parameters as JSON in
+      `params` and the request body as JSON in `body`. Use gws_schema to check
+      what a method expects.
     timeoutMs: 60000
     hints:
       readOnly: false
@@ -1485,9 +1484,9 @@ tools:
     binary: gws
     title: Read Admin Reports
     description: >-
-      Read-only Admin Reports API calls: audit activity logs, usage reports and customer usage.
-      Never modifies anything. Pass parameters as a JSON string in
-      `params`; use gws_schema for the exact parameter names.
+      Read-only Admin Reports API calls: audit activity logs, usage reports and
+      customer usage. Never modifies anything. Pass parameters as a JSON string
+      in `params`; use gws_schema for the exact parameter names.
     timeoutMs: 60000
     hints:
       readOnly: true
@@ -1529,6 +1528,7 @@ tools:
       - ["--params", "{{params}}"]
       - "--format"
       - "json"
+  # END GENERATED
 
   # --- gws helpers ----------------------------------------------------------
   # Thin, ergonomic wrappers gws ships for the most common operations. They take

@@ -12,7 +12,8 @@
     "test": "node --test test/*.test.js",
     "serve": "node src/server.js",
     "serve:sandboxed": "launcher/ps-mcp-launch",
-    "setup": "bin/ps-mcp-resolve"
+    "setup": "bin/ps-mcp-resolve",
+    "gen:gws": "node tools/gen-gws-tools.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1136.0",
