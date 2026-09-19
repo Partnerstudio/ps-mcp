@@ -78,10 +78,16 @@
 ;; ------------------------------------------- narrow re-allows (dot paths) ---
 ;; Below the denies on purpose: last match wins.
 (allow file-read* process-exec (subpath (param "NODE_DIR")))   ; the node we run
-;; The whole nvm tree, not just the running version: globally installed CLIs such
-;; as gws live under some version's prefix, and /usr/local/bin/<cli> is usually a
-;; symlink into one that is NOT the version the launcher picked for node.
-(allow file-read* process-exec (subpath (param "NVM_DIR")))
+
+;; Install prefixes of the tools, resolved once by bin/ps-mcp-resolve and passed
+;; in by the launcher. This is why the profile never has to guess between
+;; /opt/homebrew, /usr/local and a version-specific nvm directory. Unused slots
+;; are /var/empty, which grants nothing.
+(allow file-read* process-exec
+  (subpath (param "TOOL_PREFIX_1"))
+  (subpath (param "TOOL_PREFIX_2"))
+  (subpath (param "TOOL_PREFIX_3"))
+  (subpath (param "TOOL_PREFIX_4")))
 (allow file-read* (subpath (param "APP_DIR")))                 ; server + node_modules
 (allow file-read* (subpath (param "AWS_DIR")))                 ; ~/.aws, read-only
 (allow file-read* file-write* (subpath (param "GWS_DIR")))     ; ~/.config/gws, if used

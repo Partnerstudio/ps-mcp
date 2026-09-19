@@ -9,8 +9,7 @@ import { renderArgv, runExecTool } from '../src/exec-tool.js';
 
 const MANIFEST = `
 version: 1
-binaries:
-  echo: /bin/echo
+binaries: [echo]
 tools:
   - name: demo
     type: exec
@@ -34,7 +33,7 @@ tools:
     argv: ["{{path}}", "--label={{label}}", "-n", "{{count}}"]
 `;
 
-const [tool] = parseManifest(MANIFEST, { file: 't.yaml' }).tools;
+const [tool] = parseManifest(MANIFEST, { file: 't.yaml', binaryPaths: new Map([['echo', '/bin/echo']]) }).tools;
 let root;
 
 before(() => {
@@ -101,8 +100,7 @@ describe('renderArgv', () => {
 describe('renderArgv, groups', () => {
   const GROUPED = `
 version: 1
-binaries:
-  echo: /bin/echo
+binaries: [echo]
 tools:
   - name: grouped
     type: exec
@@ -126,7 +124,7 @@ tools:
       - ["--params", "{{params}}"]
       - ["--json", "{{body}}"]
 `;
-  const [grouped] = parseManifest(GROUPED, { file: 't.yaml' }).tools;
+  const [grouped] = parseManifest(GROUPED, { file: 't.yaml', binaryPaths: new Map([['echo', '/bin/echo']]) }).tools;
 
   it('normalizes a bare string into a group of one', () => {
     assert.deepEqual(grouped.argv[0], ['{{resource}}']);

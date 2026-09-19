@@ -11,8 +11,7 @@ const SHIPPED = path.join(here, '..', 'etc', 'tools.yaml');
 
 const VALID = `
 version: 1
-binaries:
-  echo: /bin/echo
+binaries: [echo]
 tools:
   - name: demo
     type: exec
@@ -47,7 +46,7 @@ describe('parseManifest', () => {
   it('parses a valid manifest', () => {
     const { tools } = parseManifest(VALID, { file: 't.yaml' });
     assert.equal(tools.length, 1);
-    assert.equal(tools[0].binaryPath, '/bin/echo');
+    assert.equal(tools[0].binaryName, 'echo');
     assert.equal(tools[0].timeoutMs, 30_000);
     assert.equal(tools[0].output, 'text');
   });
@@ -87,12 +86,26 @@ describe('parseManifest', () => {
     );
   });
 
-  it('rejects a binary that is not declared', () => {
-    assert.match(broken(VALID.replace('binary: echo', 'binary: ffmpeg')), /must name a key in top-level/);
+  it('rejects a binary the manifest does not declare', () => {
+    assert.match(broken(VALID.replace('binary: echo', 'binary: ffmpeg')), /must be one of top-level/);
   });
 
-  it('rejects a relative binary path', () => {
-    assert.match(broken(VALID.replace('echo: /bin/echo', 'echo: echo')), /must be an absolute path/);
+  it('rejects a binaries block that is not a list of names', () => {
+    assert.match(broken(VALID.replace('binaries: [echo]', 'binaries:\n  echo: /bin/echo')),
+      /must be a list of binary names/);
+  });
+
+  it('takes the binary path from the resolved map, not the manifest', () => {
+    const [tool] = parseManifest(VALID, {
+      file: 't.yaml',
+      binaryPaths: new Map([['echo', '/opt/homebrew/bin/echo']]),
+    }).tools;
+    assert.equal(tool.binaryPath, '/opt/homebrew/bin/echo');
+  });
+
+  it('leaves binaryPath null when the binary was never resolved', () => {
+    const [tool] = parseManifest(VALID, { file: 't.yaml' }).tools;
+    assert.equal(tool.binaryPath, null);
   });
 
   it('rejects duplicate tool names', () => {

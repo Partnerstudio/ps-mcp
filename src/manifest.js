@@ -4,7 +4,9 @@
 // manifest is worse than no server. A missing *binary* is an environment
 // problem, so that tool is skipped with a warning and the rest still serve.
 import { accessSync, constants, readFileSync } from 'node:fs';
+import path from 'node:path';
 import { parse } from 'yaml';
+import { loadBinaries } from './binaries.js';
 import { log } from './log.js';
 
 const PLACEHOLDER = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;
@@ -76,10 +78,10 @@ function toJsonSchema(params) {
   return { type: 'object', properties, required, additionalProperties: false };
 }
 
-function validateExec(raw, where, binaries, params, byName) {
+function validateExec(raw, where, binaries, binaryPaths, params, byName) {
   const { binary } = raw;
-  if (typeof binary !== 'string' || !binaries[binary]) {
-    fail(where, `\`binary\` must name a key in top-level \`binaries\` (got ${JSON.stringify(binary)})`);
+  if (typeof binary !== 'string' || !binaries.includes(binary)) {
+    fail(where, `\`binary\` must be one of top-level \`binaries\` (got ${JSON.stringify(binary)})`);
   }
   if (!Array.isArray(raw.argv)) fail(where, '`argv` must be a list');
 
@@ -116,7 +118,12 @@ function validateExec(raw, where, binaries, params, byName) {
   const output = raw.output ?? 'text';
   if (!OUTPUTS.has(output)) fail(where, `\`output\` must be one of ${[...OUTPUTS].join(', ')}`);
 
-  return { binaryName: binary, binaryPath: binaries[binary], argv, output };
+  return {
+    binaryName: binary,
+    binaryPath: binaryPaths?.get(binary) ?? null,
+    argv,
+    output,
+  };
 }
 
 function validateSdk(raw, where, sdkHandlers) {
@@ -131,7 +138,7 @@ function validateSdk(raw, where, sdkHandlers) {
   return { output: 'json' };
 }
 
-function validateTool(raw, index, { binaries, sdkHandlers }) {
+function validateTool(raw, index, { binaries, binaryPaths, sdkHandlers }) {
   const where = `tools[${index}]${raw?.name ? ` (${raw.name})` : ''}`;
   if (!raw || typeof raw !== 'object') fail(where, 'must be a mapping');
 
@@ -166,7 +173,7 @@ function validateTool(raw, index, { binaries, sdkHandlers }) {
 
   const specific =
     type === 'exec'
-      ? validateExec(raw, where, binaries, params, byName)
+      ? validateExec(raw, where, binaries, binaryPaths, params, byName)
       : validateSdk(raw, where, sdkHandlers);
 
   return {
@@ -192,7 +199,7 @@ function validateS3(raw, where) {
   return { region: raw.region, presignMaxSeconds };
 }
 
-export function parseManifest(text, { file = '<manifest>', sdkHandlers = null } = {}) {
+export function parseManifest(text, { file = '<manifest>', sdkHandlers = null, binaryPaths = null } = {}) {
   let doc;
   try {
     doc = parse(text);
@@ -202,16 +209,18 @@ export function parseManifest(text, { file = '<manifest>', sdkHandlers = null } 
   if (!doc || typeof doc !== 'object') fail(file, 'must be a mapping');
   if (doc.version !== 1) fail(file, `\`version\` must be 1 (got ${JSON.stringify(doc.version)})`);
 
-  const binaries = doc.binaries ?? {};
-  if (typeof binaries !== 'object' || Array.isArray(binaries)) fail(file, '`binaries` must be a mapping');
-  for (const [key, value] of Object.entries(binaries)) {
-    if (typeof value !== 'string' || !value.startsWith('/')) {
-      fail(`${file} binaries.${key}`, 'must be an absolute path');
-    }
+  // `binaries` names the tools this manifest needs; it does not say where they
+  // are. bin/ps-mcp-resolve finds them once, at install, in the operator's own
+  // shell and records absolute paths in etc/binaries.conf. So the manifest never
+  // has to enumerate every place a CLI might be installed, and exec time still
+  // uses an absolute path that no model input can influence.
+  const binaries = doc.binaries ?? [];
+  if (!Array.isArray(binaries) || binaries.some((b) => typeof b !== 'string' || !b)) {
+    fail(file, '`binaries` must be a list of binary names, e.g. [ffprobe, gws]');
   }
 
   if (!Array.isArray(doc.tools) || doc.tools.length === 0) fail(file, '`tools` must be a non-empty list');
-  const tools = doc.tools.map((raw, i) => validateTool(raw, i, { binaries, sdkHandlers }));
+  const tools = doc.tools.map((raw, i) => validateTool(raw, i, { binaries, binaryPaths, sdkHandlers }));
 
   const seen = new Set();
   for (const tool of tools) {
@@ -226,14 +235,30 @@ export function parseManifest(text, { file = '<manifest>', sdkHandlers = null } 
   return { version: doc.version, binaries, s3, tools };
 }
 
-export function loadManifest(file, { sdkHandlers = null } = {}) {
-  const manifest = parseManifest(readFileSync(file, 'utf8'), { file, sdkHandlers });
+export function loadManifest(file, { sdkHandlers = null, binariesFile = null } = {}) {
+  const resolved = loadBinaries(binariesFile ?? path.join(path.dirname(file), 'binaries.conf'));
+  if (!resolved.present) {
+    log.warn('etc/binaries.conf is missing; run bin/ps-mcp-resolve', {
+      expected: binariesFile ?? path.join(path.dirname(file), 'binaries.conf'),
+    });
+  }
+  const manifest = parseManifest(readFileSync(file, 'utf8'), {
+    file,
+    sdkHandlers,
+    binaryPaths: resolved.paths,
+  });
 
   const tools = [];
   const skipped = [];
   for (const tool of manifest.tools) {
     if (tool.type !== 'exec') {
       tools.push(tool);
+      continue;
+    }
+    if (!tool.binaryPath) {
+      const reason = `\`${tool.binaryName}\` is not in etc/binaries.conf; run bin/ps-mcp-resolve`;
+      skipped.push({ name: tool.name, reason });
+      log.warn('tool skipped', { tool: tool.name, binary: tool.binaryName, reason });
       continue;
     }
     try {
@@ -245,7 +270,7 @@ export function loadManifest(file, { sdkHandlers = null } = {}) {
       const reason =
         err.code === 'ERR_ACCESS_DENIED'
           ? 'blocked by node --permission; add --allow-fs-read for it in launcher/ps-mcp-launch'
-          : `not executable (${err.code})`;
+          : `not executable (${err.code}); re-run bin/ps-mcp-resolve`;
       skipped.push({ name: tool.name, binaryPath: tool.binaryPath, reason });
       log.warn('tool skipped', { tool: tool.name, binary: tool.binaryPath, reason });
     }

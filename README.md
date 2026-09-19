@@ -18,8 +18,21 @@ Design decisions live in `CLAUDE.md`. This file covers running it.
 ## Running
 
     npm ci
+    npm run setup               # resolve binaries -> etc/binaries.conf
     npm test
     launcher/ps-mcp-launch      # speaks JSON-RPC on stdin/stdout
+
+`npm run setup` (bin/ps-mcp-resolve) is the one place a PATH lookup happens. It
+runs `command -v` in your shell, follows symlinks, and records absolute paths
+plus their install prefixes in `etc/binaries.conf`. Everything downstream uses
+those absolute paths, and the Seatbelt profile grants exactly those prefixes --
+so nothing has to guess between Homebrew on Apple Silicon (`/opt/homebrew`),
+Homebrew on Intel (`/usr/local`) and a version-specific nvm directory.
+
+Re-run it after installing or upgrading a tool. `etc/binaries.conf` is
+gitignored because it is machine-specific. Without it the launcher stops with a
+message naming the script; individual tools whose binary is missing are skipped
+with a warning and the rest still serve.
 
 ## Claude Desktop
 

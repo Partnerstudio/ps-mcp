@@ -1,14 +1,20 @@
 #!/bin/sh
 # Point Claude Desktop / Claude Code / Codex at this file, not at node.
 #
-# Claude Desktop spawns MCP servers with a near-empty environment, so every path
-# here is resolved absolutely rather than looked up on PATH. The server is then
-# exec'd under Seatbelt (kernel-level disk isolation) and node's own permission
-# model (JS-level fs isolation).
+# Claude Desktop spawns MCP servers with a near-empty environment, so nothing
+# here relies on PATH. The binaries were resolved once at install by
+# bin/ps-mcp-resolve and recorded in etc/binaries.conf; this script reads that
+# file, grants the sandbox exactly those install prefixes, and execs the server
+# under Seatbelt (kernel-level disk isolation) plus node's permission model.
+#
+# POSIX sh only: /bin/sh is bash 3.2 in POSIX mode on macOS, never zsh.
 set -eu
 
 APP_DIR=$(cd -- "$(dirname -- "$0")/.." && pwd -P)
 PROFILE="$APP_DIR/etc/ps-mcp.sb"
+CONF="$APP_DIR/etc/binaries.conf"
+
+conf_get() { [ -f "$CONF" ] && sed -n "s|^$1=||p" "$CONF" | head -1 || true; }
 
 # Work root: the one subtree tools may read and write.
 WORK_REQUESTED=${PS_MCP_WORK:-$HOME}
@@ -17,73 +23,67 @@ if [ ! -d "$WORK_REQUESTED" ]; then
   exit 1
 fi
 WORK=$(cd -- "$WORK_REQUESTED" && pwd -P)
-
 TMP=$(cd -- "${TMPDIR:-/tmp}" && pwd -P)
 
-# node is not on PATH under Claude Desktop; probe the usual installs.
-NODE_BIN=${PS_MCP_NODE:-}
-if [ -z "$NODE_BIN" ]; then
-  for candidate in \
-    "$(command -v node 2>/dev/null || true)" \
-    /opt/homebrew/bin/node \
-    /usr/local/bin/node \
-    "$HOME/.nvm/versions/node/v24.14.0/bin/node"
-  do
-    if [ -n "$candidate" ] && [ -x "$candidate" ]; then NODE_BIN=$candidate; break; fi
-  done
-fi
-if [ -z "$NODE_BIN" ]; then
-  echo "ps-mcp: could not find node; set PS_MCP_NODE to an absolute path" >&2
+NODE_BIN=${PS_MCP_NODE:-$(conf_get node)}
+if [ -z "$NODE_BIN" ] || [ ! -x "$NODE_BIN" ]; then
+  echo "ps-mcp: node not resolved. Run bin/ps-mcp-resolve (needs your PATH)," >&2
+  echo "        or set PS_MCP_NODE to an absolute path." >&2
   exit 1
 fi
-
-# Resolve symlinks before computing the prefix. /usr/local/bin/node is commonly
-# a symlink into ~/.nvm/..., and the sandbox has to allow the REAL location --
-# granting exec on /usr/local would leave the target in a denied dot-directory.
-NODE_REAL=$(readlink -f -- "$NODE_BIN" 2>/dev/null || true)
-if [ -z "$NODE_REAL" ] || [ ! -x "$NODE_REAL" ]; then
-  NODE_REAL=$(cd -- "$(dirname -- "$NODE_BIN")" && pwd -P)/$(basename -- "$NODE_BIN")
-fi
-
-# Installation prefix of that node, e.g. ~/.nvm/versions/node/v24.14.0
-NODE_DIR=$(cd -- "$(dirname -- "$NODE_REAL")/.." && pwd -P)
+NODE_DIR=$(cd -- "$(dirname -- "$NODE_BIN")/.." && pwd -P)
 
 export PS_MCP_WORK="$WORK"
-
 # Which ~/.aws profile the S3 tools authenticate as. Claude Desktop passes no
-# environment, so the SDK would otherwise fall back to [default] implicitly --
-# state it, so changing a shell default cannot quietly redirect the tools.
+# environment, so the SDK would otherwise fall back to [default] implicitly.
 export AWS_PROFILE="${PS_MCP_AWS_PROFILE:-default}"
-
-# gws encrypts stored credentials. Keep the key in a file rather than the macOS
+# gws encrypts stored credentials; keep the key in a file rather than the macOS
 # Keychain, which the sandbox deliberately cannot reach.
 export GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND=file
 
-exec /usr/bin/sandbox-exec -f "$PROFILE" \
+# Seatbelt cannot loop, so install prefixes go into a fixed set of parameters.
+# Unused slots must still be defined or the profile fails to compile; /var/empty
+# is a real, empty, read-only directory, so an unused slot grants nothing.
+PREFIXES=$([ -f "$CONF" ] && sed -n 's|^prefix=||p' "$CONF" || true)
+P1=/var/empty; P2=/var/empty; P3=/var/empty; P4=/var/empty
+i=0
+for p in $PREFIXES; do
+  i=$((i + 1))
+  case $i in 1) P1=$p ;; 2) P2=$p ;; 3) P3=$p ;; 4) P4=$p ;;
+    *) echo "ps-mcp: more than 4 install prefixes; ignoring $p" >&2 ;;
+  esac
+done
+
+set -- /usr/bin/sandbox-exec -f "$PROFILE" \
   -D HOME="$HOME" \
   -D WORK="$WORK" \
   -D APP_DIR="$APP_DIR" \
   -D NODE_DIR="$NODE_DIR" \
-  -D NVM_DIR="$HOME/.nvm" \
   -D TMP="$TMP" \
   -D AWS_DIR="$HOME/.aws" \
   -D GWS_DIR="$HOME/.config/gws" \
   -D GWS_SUPPORT_DIR="$HOME/Library/Application Support/gws" \
   -D HOME_LIBRARY="$HOME/Library" \
-  "$NODE_REAL" \
+  -D TOOL_PREFIX_1="$P1" \
+  -D TOOL_PREFIX_2="$P2" \
+  -D TOOL_PREFIX_3="$P3" \
+  -D TOOL_PREFIX_4="$P4" \
+  "$NODE_BIN" \
     --permission \
     --allow-child-process \
     --allow-fs-read="$APP_DIR" \
     --allow-fs-read="$APP_DIR/*" \
     --allow-fs-read="$WORK/*" \
-    --allow-fs-read="$HOME/.aws/*" \
-    --allow-fs-read="$HOME/Library/Application Support/gws/*" \
-    --allow-fs-read="$NODE_DIR/*" \
-    --allow-fs-read="$HOME/.nvm/*" \
-    --allow-fs-read="/opt/homebrew/*" \
-    --allow-fs-read="/usr/bin/*" \
-    --allow-fs-read="/usr/local/bin/*" \
-    --allow-fs-read="/bin/*" \
     --allow-fs-write="$WORK/*" \
     --allow-fs-write="$TMP/*" \
-    "$APP_DIR/src/server.js" "$@"
+    --allow-fs-read="$HOME/.aws/*" \
+    --allow-fs-read="$HOME/Library/Application Support/gws/*"
+
+# node's permission model is inherited by node-based children, so every install
+# prefix has to be readable by them too -- gws is itself a node script.
+for p in $PREFIXES; do
+  set -- "$@" --allow-fs-read="$p/*"
+done
+
+set -- "$@" "$APP_DIR/src/server.js"
+exec "$@"

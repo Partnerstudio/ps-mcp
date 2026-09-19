@@ -23,10 +23,11 @@ s3:
   region: eu-north-1
   presignMaxSeconds: 86400      # 24h cap on s3_presign, whatever is requested
 
-binaries:
-  ffprobe: /opt/homebrew/bin/ffprobe
-  ffmpeg: /opt/homebrew/bin/ffmpeg
-  gws: /usr/local/bin/gws
+# The binaries this manifest needs. WHERE they are is not written here: run
+# bin/ps-mcp-resolve once at install and it records absolute paths in
+# etc/binaries.conf, resolved with `command -v` in the operator's own shell.
+# Exec time still uses an absolute path that no model input can influence.
+binaries: [ffprobe, ffmpeg, gws]
 
 tools:
   - name: ffprobe_info
