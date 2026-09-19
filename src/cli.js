@@ -1,6 +1,6 @@
 // ps-mcp CLI. Everything an operator needs after install: wire up the MCP
 // clients, sign in to Google, and diagnose why a tool is missing.
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { accessSync, constants, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
@@ -130,6 +130,18 @@ function setup() {
 
 // --- auth ------------------------------------------------------------------
 
+// gws opens a browser only when it believes it has a terminal. Run from a tool,
+// a script or an MCP client it just prints the URL and waits on its loopback
+// port, which looks like nothing happening at all. Watch its output and open the
+// URL ourselves.
+export function extractAuthUrl(text) {
+  // The trailing whitespace requirement is load-bearing: stdout arrives in
+  // chunks, and without it a URL split mid-string matches as a truncated one and
+  // we open a broken consent page. Requiring the terminator proves it is whole.
+  const m = text.match(/https:\/\/accounts\.google\.com\/o\/oauth2\/\S+(?=\s)/);
+  return m ? m[0] : null;
+}
+
 function auth() {
   const { paths } = loadBinaries(CONF);
   const gws = paths.get('gws');
@@ -138,10 +150,34 @@ function auth() {
     process.exitCode = 1;
     return;
   }
-  console.log('Opening a browser to sign in to Google.');
-  console.log('You authenticate as yourself; the token is stored encrypted in your home directory.\n');
-  const r = spawnSync(gws, ['auth', 'login'], { stdio: 'inherit', env: GWS_ENV });
-  process.exitCode = r.status ?? 1;
+  console.log('Signing in to Google. You authenticate as yourself;');
+  console.log('the token is stored encrypted in your home directory.\n');
+
+  const child = spawn(gws, ['auth', 'login'], {
+    env: GWS_ENV,
+    stdio: ['inherit', 'pipe', 'inherit'],
+  });
+
+  // The URL can straddle two chunks, so match against everything seen so far.
+  let seen = '';
+  let opened = false;
+  child.stdout.on('data', (chunk) => {
+    const text = chunk.toString();
+    process.stdout.write(text);
+    if (opened) return;
+    seen += text;
+    const url = extractAuthUrl(seen);
+    if (!url) return;
+    opened = true;
+    const r = spawnSync('open', [url], { stdio: 'ignore' });
+    console.log(r.status === 0
+      ? '\n  (opened in your browser - approve there to finish)'
+      : '\n  (could not open a browser; paste the URL above)');
+  });
+
+  child.on('exit', (code) => {
+    process.exitCode = code ?? 1;
+  });
 }
 
 // --- doctor ----------------------------------------------------------------
@@ -178,7 +214,10 @@ function brewOutdated() {
 
 function gwsAuthState(gws) {
   try {
-    const out = execFileSync(gws, ['auth', 'status'], { encoding: 'utf8', timeout: 15000, env: GWS_ENV });
+    const out = execFileSync(gws, ['auth', 'status'], {
+      encoding: 'utf8', timeout: 15000, env: GWS_ENV,
+      stdio: ['ignore', 'pipe', 'ignore'],   // gws chats about its keyring on stderr
+    });
     return JSON.parse(out);
   } catch {
     return null;
@@ -220,6 +259,7 @@ function doctor() {
 
   console.log('');
   const outdated = brewOutdated();
+  let outdatedHere = 0;
   for (const [name, p] of resolved.paths) {
     const version = versionOf(p);
     if (!version) continue;
@@ -230,13 +270,14 @@ function doctor() {
       : null;
     const pending = formula && outdated?.get(formula);
     if (pending) {
+      outdatedHere++;
       warn(`${name.padEnd(8)} ${version}  -> ${pending.current_version} available (brew upgrade ${formula})`);
     } else {
       ok(`${name.padEnd(8)} ${version}`);
     }
   }
   if (outdated === null) warn('could not ask brew about updates (not installed, or it failed)');
-  else if ([...outdated.keys()].length) console.log('        run `ps-mcp update` to apply');
+  else if (outdatedHere) console.log('        run `ps-mcp update` to apply');
 
   console.log('');
   ok(`channel: ${currentChannel()} (${CHANNEL_HELP[currentChannel()]})`);
