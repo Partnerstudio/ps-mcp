@@ -4,70 +4,14 @@
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { placeholdersIn } from './manifest.js';
-import { PathDenied, resolveWorkPath, workRoot } from './paths.js';
+import { ToolInputError, bindArgs } from './args.js';
+import { workRoot } from './paths.js';
+import { clamp, textResult } from './result.js';
 import { log } from './log.js';
 
 const execFileAsync = promisify(execFile);
 const MAX_BUFFER = 8 * 1024 * 1024;
-const MAX_TEXT = 256 * 1024;
-
-export class ToolInputError extends Error {
-  constructor(message) {
-    super(message);
-    this.name = 'ToolInputError';
-  }
-}
-
-function checkType(param, value) {
-  switch (param.type) {
-    case 'string':
-      return typeof value === 'string';
-    case 'integer':
-      return Number.isInteger(value);
-    case 'number':
-      return typeof value === 'number' && Number.isFinite(value);
-    case 'boolean':
-      return typeof value === 'boolean';
-    case 'enum':
-      return param.values.includes(value);
-    default:
-      return false;
-  }
-}
-
-// Clients are supposed to honour inputSchema. Re-check anyway: the arguments
-// arrive from a model, and inputSchema is a hint to it, not a guarantee.
-export function bindArgs(tool, args = {}, { root } = {}) {
-  const supplied = args && typeof args === 'object' ? args : {};
-  const known = new Set(tool.params.map((p) => p.name));
-  for (const key of Object.keys(supplied)) {
-    if (!known.has(key)) throw new ToolInputError(`unknown argument \`${key}\``);
-  }
-
-  const values = new Map();
-  for (const param of tool.params) {
-    let value = supplied[param.name];
-    if (value === undefined || value === null) value = param.default;
-    if (value === undefined || value === null) {
-      if (param.required) throw new ToolInputError(`missing required argument \`${param.name}\``);
-      continue;
-    }
-    if (!checkType(param, value)) {
-      const expected = param.type === 'enum' ? `one of ${param.values.join(', ')}` : param.type;
-      throw new ToolInputError(`argument \`${param.name}\` must be ${expected}`);
-    }
-    if (param.path) {
-      try {
-        value = resolveWorkPath(value, root ? { root } : undefined);
-      } catch (err) {
-        if (err instanceof PathDenied) throw new ToolInputError(`argument \`${param.name}\`: ${err.message}`);
-        throw err;
-      }
-    }
-    values.set(param.name, String(value));
-  }
-  return values;
-}
+const PLACEHOLDER = /\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g;
 
 // A token is dropped whole when any param it references was not supplied, so an
 // optional flag and its value can live in one template without conditionals.
@@ -75,15 +19,10 @@ export function renderArgv(tool, values) {
   const argv = [];
   for (const token of tool.argv) {
     const refs = placeholdersIn(token);
-    if (refs.some((ref) => !values.has(ref))) continue;
-    argv.push(token.replace(/\{\{\s*([A-Za-z_][A-Za-z0-9_]*)\s*\}\}/g, (_, ref) => values.get(ref)));
+    if (refs.some((ref) => !(ref in values))) continue;
+    argv.push(token.replace(PLACEHOLDER, (_, ref) => String(values[ref])));
   }
   return argv;
-}
-
-function clamp(text) {
-  if (text.length <= MAX_TEXT) return text;
-  return `${text.slice(0, MAX_TEXT)}\n\n[truncated: ${text.length} bytes total]`;
 }
 
 function shapeOutput(tool, stdout) {
@@ -94,10 +33,6 @@ function shapeOutput(tool, stdout) {
     log.warn('tool declared output: json but stdout did not parse', { tool: tool.name });
     return clamp(stdout.trim());
   }
-}
-
-function textResult(text, isError = false) {
-  return { content: [{ type: 'text', text }], isError };
 }
 
 export async function runExecTool(tool, args, { root = workRoot() } = {}) {

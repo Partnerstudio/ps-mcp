@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { before, describe, it } from 'node:test';
 import { parseManifest } from '../src/manifest.js';
-import { ToolInputError, bindArgs, renderArgv, runExecTool } from '../src/exec-tool.js';
+import { ToolInputError, bindArgs } from '../src/args.js';
+import { renderArgv, runExecTool } from '../src/exec-tool.js';
 
 const MANIFEST = `
 version: 1
@@ -55,7 +56,7 @@ describe('bindArgs', () => {
 
   it('resolves a path param to its canonical location', () => {
     const values = bindArgs(tool, { path: 'clips/promo.mov' }, { root });
-    assert.equal(values.get('path'), path.join(root, 'clips', 'promo.mov'));
+    assert.equal(values.path, path.join(root, 'clips', 'promo.mov'));
   });
 
   it('rejects a missing required argument', () => {

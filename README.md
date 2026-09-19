@@ -7,11 +7,13 @@ Design decisions live in `CLAUDE.md`. This file covers running it.
 
 ## Layout
 
-    etc/tools.yaml      tool manifest (what tools exist, and their argv)
-    etc/ps-mcp.sb       Seatbelt profile (kernel-level disk isolation)
-    launcher/           ps-mcp-launch -- point MCP clients at this
-    src/                server, manifest loader, exec runner, path guard
-    test/               node:test, no framework
+    etc/tools.yaml              tool manifest (what tools exist, and their argv)
+    etc/ps-mcp.sb               Seatbelt profile (kernel-level disk isolation)
+    etc/iam-policy.example.json minimum IAM policy for the S3 tools
+    launcher/                   ps-mcp-launch -- point MCP clients at this
+    src/                        server, manifest loader, exec + sdk runners,
+                                path guard, S3 tools
+    test/                       node:test, no framework
 
 ## Running
 
@@ -58,6 +60,36 @@ To narrow the root:
 
     PS_MCP_WORK=~/Downloads launcher/ps-mcp-launch
 
+## S3 tools
+
+`s3_list`, `s3_get`, `s3_put` (multipart), `s3_presign`, `s3_delete`. Credentials
+come from the SDK default chain reading `~/.aws`; nothing is injected and the
+server never reads a secret itself. The launcher pins `AWS_PROFILE=default`,
+overridable:
+
+    PS_MCP_AWS_PROFILE=partnerstudio launcher/ps-mcp-launch
+
+**There is no bucket allowlist. The IAM policy on that user is the security
+boundary.** Scope it before pointing this at anything that matters --
+`etc/iam-policy.example.json` is the minimum these five tools need. Three things
+that policy has to get right:
+
+- `s3:ListBucket` is a *bucket* permission; the object actions are *object*
+  permissions on `bucket/prefix/*`. Both are needed.
+- If the bucket has SSE-KMS default encryption, uploads also need
+  `kms:GenerateDataKey` and `kms:Decrypt`, or `s3_put` fails with `AccessDenied`
+  on `kms:GenerateDataKey` even though every S3 permission is present.
+- `s3_presign` resolves the bucket's region with `HeadBucket`, which needs
+  `s3:ListBucket` *without* a prefix condition. Under a prefix-scoped policy that
+  lookup is denied and it falls back to the configured region, which is correct
+  only for same-region buckets.
+
+A presigned URL is a bearer credential: anyone holding it downloads the object
+with no further auth until it expires. Expiry is capped at `presignMaxSeconds`
+in `etc/tools.yaml` (24h) regardless of what is requested, and the response
+reports the value actually used. The URL is signed for `GET` specifically --
+a `HEAD` against it fails the signature check with 403, which is not a bug.
+
 ## Adding a tool
 
 Add an entry to `etc/tools.yaml`. Structural mistakes fail at startup with a
@@ -89,7 +121,12 @@ message naming the tool and field; a missing binary only skips that one tool.
 - a token referencing a param that was not supplied is dropped whole, which is
   how optional flags work without conditionals
 
+Two entry types exist. `exec` tools declare a `binary` and an `argv` template.
+`sdk` tools are implemented in code, keyed by tool name (see `src/s3-tools.js`),
+and take no `binary`, `argv` or `output` -- declaring any of those is rejected at
+startup. Both kinds share argument binding, so `path: true` behaves identically.
+
 ## Not built yet
 
-`sdk` tools (S3), gws tools, background jobs for long ffmpeg runs, progress
-notifications, `ps-mcp setup` / `ps-mcp doctor`, and the Homebrew formula.
+gws tools, background jobs for long ffmpeg runs, progress notifications,
+`ps-mcp setup` / `ps-mcp doctor`, and the Homebrew formula.

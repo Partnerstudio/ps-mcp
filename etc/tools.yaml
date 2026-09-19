@@ -15,6 +15,14 @@
 
 version: 1
 
+# Configuration for `sdk` tools. Credentials come from the SDK default chain
+# reading ~/.aws; the launcher only picks which AWS_PROFILE is in scope.
+# There is deliberately no bucket allowlist -- the boundary is the IAM policy
+# on the user. See etc/iam-policy.example.json for the minimum prod policy.
+s3:
+  region: eu-north-1
+  presignMaxSeconds: 86400      # 24h cap on s3_presign, whatever is requested
+
 binaries:
   ffprobe: /opt/homebrew/bin/ffprobe
   ffmpeg: /opt/homebrew/bin/ffmpeg
@@ -49,3 +57,133 @@ tools:
       - "-show_format"
       - "-show_streams"
       - "{{path}}"
+
+  # --- S3 -------------------------------------------------------------------
+  # `sdk` tools are implemented in src/s3-tools.js and keyed by tool name.
+  # They take no binary and no argv.
+
+  - name: s3_list
+    type: sdk
+    title: List S3 objects
+    description: >-
+      List objects in an S3 bucket, optionally under a key prefix. Returns keys
+      with size, last-modified time and storage class. Paginated: if isTruncated
+      is true, pass nextContinuationToken back to get the next page.
+    hints:
+      readOnly: true
+      destructive: false
+    params:
+      - name: bucket
+        type: string
+        required: true
+        description: Bucket name, without the s3:// scheme.
+      - name: prefix
+        type: string
+        description: Only list keys starting with this prefix, e.g. "campaigns/2026/".
+      - name: maxKeys
+        type: integer
+        description: Maximum keys to return, 1-1000. Defaults to 1000.
+      - name: continuationToken
+        type: string
+        description: nextContinuationToken from a previous truncated response.
+
+  - name: s3_get
+    type: sdk
+    title: Download an S3 object
+    description: >-
+      Download one S3 object to a local file and return the path and byte count.
+      Refuses to overwrite an existing file unless overwrite is true.
+    timeoutMs: 600000
+    hints:
+      readOnly: false
+      destructive: false
+    params:
+      - name: bucket
+        type: string
+        required: true
+        description: Bucket name, without the s3:// scheme.
+      - name: key
+        type: string
+        required: true
+        description: Full object key, e.g. "campaigns/2026/promo.mp4".
+      - name: path
+        type: string
+        required: true
+        path: true
+        description: Local destination file. Its parent directory must already exist.
+      - name: overwrite
+        type: boolean
+        description: Replace the destination if it already exists. Defaults to false.
+
+  - name: s3_put
+    type: sdk
+    title: Upload a file to S3
+    description: >-
+      Upload a local file to an S3 key, using multipart upload for large files.
+      Returns the ETag and byte count. Overwrites the key if it already exists.
+    timeoutMs: 1800000
+    hints:
+      readOnly: false
+      destructive: false
+    params:
+      - name: bucket
+        type: string
+        required: true
+        description: Bucket name, without the s3:// scheme.
+      - name: key
+        type: string
+        required: true
+        description: Destination object key, e.g. "campaigns/2026/promo.mp4".
+      - name: path
+        type: string
+        required: true
+        path: true
+        description: Local source file to upload.
+      - name: contentType
+        type: string
+        description: MIME type to store, e.g. "video/mp4". S3 defaults it if omitted.
+
+  - name: s3_presign
+    type: sdk
+    title: Presign an S3 download URL
+    description: >-
+      Create a time-limited HTTPS URL that downloads one S3 object with no
+      further authentication. Anyone holding the URL can fetch the object until
+      it expires, so treat it as a credential. Expiry is capped by the server.
+    hints:
+      readOnly: true
+      destructive: false
+    params:
+      - name: bucket
+        type: string
+        required: true
+        description: Bucket name, without the s3:// scheme.
+      - name: key
+        type: string
+        required: true
+        description: Full object key to link to.
+      - name: expiresIn
+        type: integer
+        description: >-
+          Requested lifetime in seconds. Defaults to 3600 and is silently capped
+          at the server maximum; the response reports the value actually used.
+
+  - name: s3_delete
+    type: sdk
+    title: Delete an S3 object
+    description: >-
+      Permanently delete one S3 object. Reports whether the key existed, so a
+      no-op is not reported as a deletion. On a versioned bucket this writes a
+      delete marker rather than erasing history.
+    hints:
+      readOnly: false
+      destructive: true
+    params:
+      - name: bucket
+        type: string
+        required: true
+        description: Bucket name, without the s3:// scheme.
+      - name: key
+        type: string
+        required: true
+        description: Full object key to delete.

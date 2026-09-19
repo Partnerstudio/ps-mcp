@@ -12,16 +12,18 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { loadManifest } from './manifest.js';
 import { runExecTool } from './exec-tool.js';
+import { runSdkTool } from './sdk-tool.js';
+import { S3_TOOL_NAMES, createS3Tools } from './s3-tools.js';
 import { workRoot } from './paths.js';
 import { log } from './log.js';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const MANIFEST = process.env.PS_MCP_MANIFEST ?? path.join(here, '..', 'etc', 'tools.yaml');
 
-export function buildServer(manifest) {
+export function buildServer(manifest, { handlers = {} } = {}) {
   const byName = new Map(manifest.tools.map((tool) => [tool.name, tool]));
   const server = new Server(
-    { name: 'ps-mcp', version: '0.1.0' },
+    { name: 'ps-mcp', version: '0.2.0' },
     { capabilities: { tools: {} } },
   );
 
@@ -44,22 +46,26 @@ export function buildServer(manifest) {
     if (!tool) {
       throw new McpError(ErrorCode.InvalidParams, `unknown tool \`${request.params.name}\``);
     }
-    return runExecTool(tool, request.params.arguments ?? {});
+    const args = request.params.arguments ?? {};
+    return tool.type === 'exec' ? runExecTool(tool, args) : runSdkTool(tool, args, { handlers });
   });
 
   return server;
 }
 
 async function main() {
-  const manifest = loadManifest(MANIFEST);
+  const manifest = loadManifest(MANIFEST, { sdkHandlers: new Set(S3_TOOL_NAMES) });
+  const handlers = manifest.s3 ? createS3Tools(manifest.s3) : {};
+
   log.info('ps-mcp starting', {
     manifest: MANIFEST,
     workRoot: workRoot(),
+    awsProfile: process.env.AWS_PROFILE ?? '(default chain)',
     tools: manifest.tools.map((t) => t.name),
     skipped: manifest.skipped.map((t) => t.name),
   });
 
-  const server = buildServer(manifest);
+  const server = buildServer(manifest, { handlers });
   await server.connect(new StdioServerTransport());
   log.info('ps-mcp ready on stdio');
 }

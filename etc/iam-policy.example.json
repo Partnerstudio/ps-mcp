@@ -1,0 +1,47 @@
+{
+  "_comment": [
+    "Minimum IAM policy for the ps-mcp S3 tools. There is no bucket allowlist in",
+    "the server: this policy IS the security boundary, so scope it tightly.",
+    "Replace BUCKET and PREFIX, then attach to the IAM user ps-mcp runs as.",
+    "Drop the s3:DeleteObject action if the s3_delete tool should be inert.",
+    "If the bucket has SSE-KMS default encryption, uploads ALSO need kms:GenerateDataKey and kms:Decrypt on the bucket's key, or s3_put fails with AccessDenied on kms:GenerateDataKey. Uncomment the KmsForSseKms statement below and set the key ARN."
+  ],
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "ListOnlyTheGivenPrefix",
+      "Effect": "Allow",
+      "Action": [
+        "s3:ListBucket"
+      ],
+      "Resource": "arn:aws:s3:::BUCKET",
+      "Condition": {
+        "StringLike": {
+          "s3:prefix": [
+            "PREFIX/*",
+            "PREFIX"
+          ]
+        }
+      }
+    },
+    {
+      "Sid": "ObjectReadWriteDelete",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject"
+      ],
+      "Resource": "arn:aws:s3:::BUCKET/PREFIX/*"
+    },
+    {
+      "Sid": "KmsForSseKms_RemoveIfBucketUsesSSE_S3",
+      "Effect": "Allow",
+      "Action": [
+        "kms:GenerateDataKey",
+        "kms:Decrypt"
+      ],
+      "Resource": "arn:aws:kms:REGION:ACCOUNT:key/KEY-ID"
+    }
+  ]
+}
