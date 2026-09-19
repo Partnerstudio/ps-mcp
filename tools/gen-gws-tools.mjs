@@ -40,13 +40,23 @@ const SERVICES = [
   ['forms', 'Forms', 'forms, items and responses'],
   ['keep', 'Keep', 'notes, attachments and permissions'],
   ['admin-reports', 'Admin Reports', 'audit activity logs, usage reports and customer usage'],
+  // `run` executes a deployed Apps Script function, and `updateContent` writes the
+  // code it runs. Together that is arbitrary code execution in the user's
+  // Workspace, on Google's servers -- outside this server's sandbox entirely.
+  // The description says so, because the model reads it.
+  ['script', 'Apps Script',
+   'Apps Script projects, content, versions, deployments and processes. Note that updateContent writes script source and run EXECUTES a deployed function with the signed-in user\'s Google permissions, on Google\'s servers -- outside this server\'s sandbox. Treat both as you would running code on the user\'s behalf'],
 ];
 // Admin Reports is inherently read-only; its only writes are watch/stop on
 // subscriptions, which are not useful here.
 const READ_ONLY_SERVICES = new Set(['admin-reports']);
-const READ_EXACT = new Set(['list', 'search', 'batchGet', 'download', 'export']);
+// Read verbs match as PREFIXES, not exact names. Google routinely suffixes them:
+// listScriptProcesses, searchDirectoryPeople, batchGetByDataFilter are all reads,
+// and exact matching filed them under *_write -- hidden behind a destructive hint
+// and absent from the read tool where a model would look for them.
+const READ_PREFIXES = ['get', 'list', 'search', 'batchGet', 'download', 'export'];
 const DESTRUCTIVE = new Set(['delete', 'batchDelete', 'clear', 'remove']);
-const isRead = (m) => m.startsWith('get') || READ_EXACT.has(m);
+const isRead = (m) => READ_PREFIXES.some((p) => m.startsWith(p));
 
 function children(argv) {
   let out;

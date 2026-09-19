@@ -192,7 +192,7 @@ tools:
 
   # BEGIN GENERATED gws service tools -- regenerate with `npm run gen:gws`
   # --- Google Workspace (gws) ----------------------------------------------
-  # Generated against gws 0.22.5: 174 methods across 13 services.
+  # Generated against gws 0.22.5: 184 methods across 14 services.
   # Each service gets a read tool and a write tool so readOnly/destructive
   # hints stay honest; together they reach the whole API. gws_schema lets the
   # model look up the exact parameters for any method.
@@ -444,7 +444,7 @@ tools:
       - name: method
         type: enum
         required: true
-        values: ["download", "export", "get", "getStartPageToken", "list"]
+        values: ["download", "export", "get", "getStartPageToken", "list", "listLabels"]
         description: The API method to call on that resource.
       - name: params
         type: string
@@ -495,7 +495,7 @@ tools:
       - name: method
         type: enum
         required: true
-        values: ["approve", "cancel", "comment", "copy", "create", "decline", "delete", "emptyTrash", "generateCseToken", "generateIds", "hide", "listLabels", "modifyLabels", "reassign", "resolve", "start", "stop", "unhide", "update", "watch"]
+        values: ["approve", "cancel", "comment", "copy", "create", "decline", "delete", "emptyTrash", "generateCseToken", "generateIds", "hide", "modifyLabels", "reassign", "resolve", "start", "stop", "unhide", "update", "watch"]
         description: The API method to call on that resource.
       - name: params
         type: string
@@ -551,7 +551,7 @@ tools:
       - name: method
         type: enum
         required: true
-        values: ["batchGet", "get", "getByDataFilter", "search"]
+        values: ["batchGet", "batchGetByDataFilter", "get", "getByDataFilter", "search"]
         description: The API method to call on that resource.
       - name: params
         type: string
@@ -602,7 +602,7 @@ tools:
       - name: method
         type: enum
         required: true
-        values: ["append", "batchClear", "batchClearByDataFilter", "batchGetByDataFilter", "batchUpdate", "batchUpdateByDataFilter", "clear", "copyTo", "create", "update"]
+        values: ["append", "batchClear", "batchClearByDataFilter", "batchUpdate", "batchUpdateByDataFilter", "clear", "copyTo", "create", "update"]
         description: The API method to call on that resource.
       - name: params
         type: string
@@ -1084,7 +1084,7 @@ tools:
       - name: method
         type: enum
         required: true
-        values: ["batchGet", "get", "getBatchGet", "list", "search"]
+        values: ["batchGet", "get", "getBatchGet", "list", "listDirectoryPeople", "search", "searchContacts", "searchDirectoryPeople"]
         description: The API method to call on that resource.
       - name: params
         type: string
@@ -1135,7 +1135,7 @@ tools:
       - name: method
         type: enum
         required: true
-        values: ["batchCreateContacts", "batchDeleteContacts", "batchUpdateContacts", "copyOtherContactToMyContactsGroup", "create", "createContact", "delete", "deleteContact", "deleteContactPhoto", "listDirectoryPeople", "modify", "searchContacts", "searchDirectoryPeople", "update", "updateContact", "updateContactPhoto"]
+        values: ["batchCreateContacts", "batchDeleteContacts", "batchUpdateContacts", "copyOtherContactToMyContactsGroup", "create", "createContact", "delete", "deleteContact", "deleteContactPhoto", "modify", "update", "updateContact", "updateContactPhoto"]
         description: The API method to call on that resource.
       - name: params
         type: string
@@ -1526,6 +1526,121 @@ tools:
       - "{{detail}}"
       - "{{method}}"
       - ["--params", "{{params}}"]
+      - "--format"
+      - "json"
+
+  - name: script_read
+    type: exec
+    binary: gws
+    title: Read Apps Script
+    description: >-
+      Read-only Apps Script API calls: Apps Script projects, content, versions,
+      deployments and processes. Note that updateContent writes script source
+      and run EXECUTES a deployed function with the signed-in user's Google
+      permissions, on Google's servers -- outside this server's sandbox. Treat
+      both as you would running code on the user's behalf. Never modifies
+      anything. Pass parameters as a JSON string in `params`; use gws_schema for
+      the exact parameter names.
+    timeoutMs: 60000
+    hints:
+      readOnly: true
+      destructive: false
+    output: json
+    params:
+      - name: resource
+        type: string
+        required: true
+        description: >-
+          First path segment after the service, e.g. "users" for Gmail,
+          "files" for Drive, "events" for Calendar. Use gws_schema to check.
+      - name: subresource
+        type: string
+        description: >-
+          Second path segment when the resource nests, e.g. "messages" in
+          `gmail users messages list`. Omit when there is none.
+      - name: detail
+        type: string
+        description: >-
+          Third path segment, only for deeply nested resources such as
+          `gmail users messages attachments get`. Rarely needed.
+      - name: method
+        type: enum
+        required: true
+        values: ["get", "getContent", "getMetrics", "list", "listScriptProcesses"]
+        description: The API method to call on that resource.
+      - name: params
+        type: string
+        description: >-
+          URL and query parameters as a JSON object string, e.g.
+          '{"userId": "me", "maxResults": 10}'. Most methods need at least an id.
+    argv:
+      - "script"
+      - "{{resource}}"
+      - "{{subresource}}"
+      - "{{detail}}"
+      - "{{method}}"
+      - ["--params", "{{params}}"]
+      - "--format"
+      - "json"
+
+  - name: script_write
+    type: exec
+    binary: gws
+    title: Write Apps Script
+    description: >-
+      Mutating Apps Script API calls: Apps Script projects, content, versions,
+      deployments and processes. Note that updateContent writes script source
+      and run EXECUTES a deployed function with the signed-in user's Google
+      permissions, on Google's servers -- outside this server's sandbox. Treat
+      both as you would running code on the user's behalf. Includes delete
+      methods, which permanently remove data. Pass parameters as JSON in
+      `params` and the request body as JSON in `body`. Use gws_schema to check
+      what a method expects.
+    timeoutMs: 60000
+    hints:
+      readOnly: false
+      destructive: true
+    output: json
+    params:
+      - name: resource
+        type: string
+        required: true
+        description: >-
+          First path segment after the service, e.g. "users" for Gmail,
+          "files" for Drive, "events" for Calendar. Use gws_schema to check.
+      - name: subresource
+        type: string
+        description: >-
+          Second path segment when the resource nests, e.g. "messages" in
+          `gmail users messages list`. Omit when there is none.
+      - name: detail
+        type: string
+        description: >-
+          Third path segment, only for deeply nested resources such as
+          `gmail users messages attachments get`. Rarely needed.
+      - name: method
+        type: enum
+        required: true
+        values: ["create", "delete", "run", "update", "updateContent"]
+        description: The API method to call on that resource.
+      - name: params
+        type: string
+        description: >-
+          URL and query parameters as a JSON object string, e.g.
+          '{"userId": "me", "maxResults": 10}'. Most methods need at least an id.
+      - name: body
+        type: string
+        description: >-
+          Request body as a JSON object string, for methods that take one
+          (create, update, patch, send).
+    argv:
+      - "script"
+      - "{{resource}}"
+      - "{{subresource}}"
+      - "{{detail}}"
+      - "{{method}}"
+      - ["--params", "{{params}}"]
+      - ["--json", "{{body}}"]
       - "--format"
       - "json"
   # END GENERATED
