@@ -50,6 +50,23 @@ const SERVICES = [
 // Admin Reports is inherently read-only; its only writes are watch/stop on
 // subscriptions, which are not useful here.
 const READ_ONLY_SERVICES = new Set(['admin-reports']);
+
+// Services deliberately not generated, with the reason. A tool that always fails
+// is worse than an absent one: the model cannot tell "not permitted here" from
+// "wrong arguments", and spends turns retrying. Delete an entry to re-enable it.
+//
+// Scope gaps need the consent screen in ai-partnerstudio-io widened; API gaps
+// need `gcloud services enable`. Both are deliberately parked.
+const BLOCKED = new Map([
+  ['chat', 'no chat scope granted (403)'],
+  ['meet', 'no meet scope granted (403)'],
+  ['forms', 'no forms scope granted (403)'],
+  ['keep', 'no keep scope granted (403), and keep.googleapis.com is disabled'],
+  ['people', 'no contacts scope granted (403)'],
+  ['script', 'no script scope granted, and script.googleapis.com is disabled'],
+  ['admin-reports', 'no admin.reports scope granted (403)'],
+  ['tasks', 'scope IS granted but tasks.googleapis.com is disabled'],
+]);
 // Read verbs match as PREFIXES, not exact names. Google routinely suffixes them:
 // listScriptProcesses, searchDirectoryPeople, batchGetByDataFilter are all reads,
 // and exact matching filed them under *_write -- hidden behind a destructive hint
@@ -182,6 +199,10 @@ const version = execFileSync(GWS, ['--version'], { encoding: 'utf8' }).trim().sp
 const blocks = [];
 let methodCount = 0;
 for (const [service, label, what] of SERVICES) {
+  if (BLOCKED.has(service)) {
+    console.error(`  skipping ${service}: ${BLOCKED.get(service)}`);
+    continue;
+  }
   const all = methodsFor(service);
   if (all.size === 0) {
     console.error(`  note: ${service} exposed no methods; skipping`);
@@ -210,7 +231,9 @@ for (const [service, label, what] of SERVICES) {
 
 const header = [
   '  # --- Google Workspace (gws) ----------------------------------------------',
-  `  # Generated against ${version}: ${methodCount} methods across ${SERVICES.length} services.`,
+  `  # Generated against ${version}: ${methodCount} methods across ${SERVICES.length - BLOCKED.size} services.`,
+  `  # ${BLOCKED.size} further services are available in gws but not generated;`,
+  '  # see BLOCKED in tools/gen-gws-tools.mjs for why, one reason each.',
   '  # Each service gets a read tool and a write tool so readOnly/destructive',
   '  # hints stay honest; together they reach the whole API. gws_schema lets the',
   '  # model look up the exact parameters for any method.',

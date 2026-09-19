@@ -175,11 +175,19 @@ first: `gmail_send`, `gmail_triage`, `calendar_agenda`, `calendar_create_event`,
 `chat_send_message`, plus the cross-service `workflow_*` tools.
 
 **Generic tools** reach everything else, one read and one write per service:
-`gmail_read`/`gmail_write`, `calendar_*`, `drive_*`, `sheets_*`, `docs_*`,
-`slides_*`, `meet_*`, `tasks_*`, `people_*`, `chat_*`, `forms_*`, `keep_*`, and
-`admin_reports_read`. The split exists so the hints stay honest -- a read tool
-constrains `method` to an enum of read verbs and is `readOnly`, a write tool is
-not, and is `destructive` only where the service can actually delete.
+`gmail_*`, `calendar_*`, `drive_*`, `sheets_*`, `docs_*`, `slides_*`. The split
+exists so the hints stay honest -- a read tool constrains `method` to an enum of
+read verbs and is `readOnly`, a write tool is not, and is `destructive` only
+where the service can actually delete.
+
+Eight further services exist in gws -- Chat, Meet, Forms, Keep, People, Apps
+Script, Admin Reports and Tasks -- but are **not generated**, because the
+credentials cannot reach them: most lack a granted OAuth scope, and Tasks, Keep
+and Apps Script also have their API disabled in the Cloud project. A tool that
+always fails is worse than an absent one, since the model cannot tell "not
+permitted" from "wrong arguments" and burns turns retrying. `BLOCKED` in
+`tools/gen-gws-tools.mjs` lists one reason each; delete an entry and regenerate
+once the scope or API lands.
 
 **`gws_schema`** returns the parameters and request body for any method, addressed
 as `service.resource.method` (e.g. `drive.files.list`). Use it rather than guessing.
