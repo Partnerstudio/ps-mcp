@@ -10,6 +10,12 @@ import { loadManifest } from './manifest.js';
 import { S3_TOOL_NAMES } from './s3-tools.js';
 
 const APP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+// gws must see the same keyring backend everywhere. The launcher sets it for the
+// server; without it here, the CLI would read a DIFFERENT credential store than
+// the server does. Worse, gws deletes credentials it cannot decrypt, so a CLI
+// call under the wrong backend destroys the server's login.
+const GWS_ENV = { ...process.env, GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND: 'file' };
 const CONF = path.join(APP_DIR, 'etc', 'binaries.conf');
 const MANIFEST = path.join(APP_DIR, 'etc', 'tools.yaml');
 const LAUNCHER = path.join(APP_DIR, 'launcher', 'ps-mcp-launch');
@@ -134,7 +140,7 @@ function auth() {
   }
   console.log('Opening a browser to sign in to Google.');
   console.log('You authenticate as yourself; the token is stored encrypted in your home directory.\n');
-  const r = spawnSync(gws, ['auth', 'login'], { stdio: 'inherit' });
+  const r = spawnSync(gws, ['auth', 'login'], { stdio: 'inherit', env: GWS_ENV });
   process.exitCode = r.status ?? 1;
 }
 
@@ -144,7 +150,7 @@ function auth() {
 function versionOf(binary) {
   for (const flag of ['--version', '-version']) {
     try {
-      const out = execFileSync(binary, [flag], { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'ignore'] });
+      const out = execFileSync(binary, [flag], { encoding: 'utf8', timeout: 10000, stdio: ['ignore', 'pipe', 'ignore'], env: GWS_ENV });
       const line = out.split('\n')[0].trim();
       if (line) return line.length > 60 ? `${line.slice(0, 60)}...` : line;
     } catch { /* try the next flag */ }
@@ -172,7 +178,7 @@ function brewOutdated() {
 
 function gwsAuthState(gws) {
   try {
-    const out = execFileSync(gws, ['auth', 'status'], { encoding: 'utf8', timeout: 15000 });
+    const out = execFileSync(gws, ['auth', 'status'], { encoding: 'utf8', timeout: 15000, env: GWS_ENV });
     return JSON.parse(out);
   } catch {
     return null;
@@ -238,12 +244,22 @@ function doctor() {
   const gws = resolved.paths.get('gws');
   if (gws) {
     const state = gwsAuthState(gws);
-    if (!state) warn('gws auth status could not be read');
-    else if (state.credential_source && state.credential_source !== 'none') {
-      ok(`Google: authenticated (${state.credential_source})`);
+    if (!state) {
+      warn('gws auth status could not be read');
     } else {
-      warn('Google: not signed in - run `ps-mcp auth`');
-      if (!state.client_config_exists) {
+      // `credential_source` names the OAuth CLIENT config, which is present even
+      // with nobody signed in -- keying off it reported "authenticated" when the
+      // user credentials had been deleted. auth_method is the real signal.
+      const signedIn =
+        (state.auth_method && state.auth_method !== 'none') ||
+        state.encrypted_credentials_exists === true ||
+        state.plain_credentials_exists === true;
+      if (signedIn) {
+        ok(`Google: signed in (${state.auth_method ?? 'oauth2'})`);
+      } else {
+        warn('Google: NOT signed in - run `ps-mcp auth`');
+      }
+      if (state.client_config_exists === false) {
         warn('  no OAuth client config; gws needs one before login can start');
       }
     }

@@ -51,7 +51,11 @@ const isRead = (m) => m.startsWith('get') || READ_EXACT.has(m);
 function children(argv) {
   let out;
   try {
-    out = execFileSync(GWS, [...argv, '--help'], { encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'ignore'] });
+    out = execFileSync(GWS, [...argv, '--help'], {
+      encoding: 'utf8', timeout: 30000, stdio: ['ignore', 'pipe', 'ignore'],
+      // Same backend the server uses; gws deletes credentials it cannot decrypt.
+      env: { ...process.env, GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND: 'file' },
+    });
   } catch {
     return [];
   }

@@ -192,7 +192,7 @@ tools:
 
   # BEGIN GENERATED gws service tools -- regenerate with `npm run gen:gws`
   # --- Google Workspace (gws) ----------------------------------------------
-  # Generated against gws 0.8.0: 174 methods across 13 services.
+  # Generated against gws 0.22.5: 174 methods across 13 services.
   # Each service gets a read tool and a write tool so readOnly/destructive
   # hints stay honest; together they reach the whole API. gws_schema lets the
   # model look up the exact parameters for any method.
