@@ -134,12 +134,23 @@ function setup() {
 // a script or an MCP client it just prints the URL and waits on its loopback
 // port, which looks like nothing happening at all. Watch its output and open the
 // URL ourselves.
+// A URL is only safe to open once we know it is complete, because stdout arrives
+// in chunks and a half-received URL opens a broken consent page.
+//
+// Requiring a trailing newline seemed like the obvious completeness test and was
+// wrong: gws prints the URL, then writes nothing more until the browser callback
+// returns, so the newline arrives only AFTER authentication. The guard prevented
+// us opening the browser at the one moment it mattered.
+//
+// Instead, check the URL carries the parameters a usable consent URL must have.
+// A truncated one is cut before them.
+const REQUIRED_PARAMS = ['client_id=', 'redirect_uri=', 'response_type='];
+
 export function extractAuthUrl(text) {
-  // The trailing whitespace requirement is load-bearing: stdout arrives in
-  // chunks, and without it a URL split mid-string matches as a truncated one and
-  // we open a broken consent page. Requiring the terminator proves it is whole.
-  const m = text.match(/https:\/\/accounts\.google\.com\/o\/oauth2\/\S+(?=\s)/);
-  return m ? m[0] : null;
+  const m = text.match(/https:\/\/accounts\.google\.com\/o\/oauth2\/\S+/);
+  if (!m) return null;
+  const url = m[0];
+  return REQUIRED_PARAMS.every((p) => url.includes(p)) ? url : null;
 }
 
 function auth() {

@@ -27,15 +27,19 @@ describe('extractAuthUrl', () => {
     const half = Math.floor(REAL.length / 2);
     let seen = `blah\n${REAL.slice(0, half)}`;
     assert.equal(extractAuthUrl(seen), null, 'a partial URL must not match');
-    seen += `${REAL.slice(half)}\n`;
-    assert.equal(extractAuthUrl(seen), REAL);
+    seen += REAL.slice(half);
+    assert.equal(extractAuthUrl(seen), REAL, 'complete once the second chunk lands');
   });
 
-  // The safety property: opening a truncated consent URL sends the user to a
-  // broken page, so an unterminated URL is treated as not yet complete.
-  it('does not match a URL that has no terminator yet', () => {
-    assert.equal(extractAuthUrl(REAL.slice(0, -20)), null);
-    assert.equal(extractAuthUrl(REAL), null, 'no trailing whitespace means not proven complete');
-    assert.equal(extractAuthUrl(`${REAL}\n`), REAL);
+  // The property that actually matters: gws writes nothing after the URL until
+  // the browser callback returns, so a complete URL with NO trailing newline
+  // must still match -- otherwise we never open the browser in time.
+  it('matches a complete URL that has no trailing newline yet', () => {
+    assert.equal(extractAuthUrl(`Open this URL:\n\n  ${REAL}`), REAL);
+  });
+
+  it('rejects a truncated URL, which would open a broken consent page', () => {
+    assert.equal(extractAuthUrl(REAL.slice(0, Math.floor(REAL.length / 2))), null);
+    assert.equal(extractAuthUrl(REAL.slice(0, REAL.indexOf('client_id='))), null);
   });
 });
