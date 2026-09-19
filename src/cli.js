@@ -166,25 +166,32 @@ function auth() {
 
   const child = spawn(gws, ['auth', 'login'], {
     env: GWS_ENV,
-    stdio: ['inherit', 'pipe', 'inherit'],
+    stdio: ['inherit', 'pipe', 'pipe'],
   });
 
-  // The URL can straddle two chunks, so match against everything seen so far.
+  // Watch BOTH streams. gws puts its result JSON on stdout but its diagnostics --
+  // including the consent URL prompt -- on stderr, so piping only stdout meant
+  // the URL never reached this handler and no browser ever opened. Matching over
+  // both also survives gws moving the prompt between them.
   let seen = '';
   let opened = false;
-  child.stdout.on('data', (chunk) => {
-    const text = chunk.toString();
-    process.stdout.write(text);
-    if (opened) return;
-    seen += text;
-    const url = extractAuthUrl(seen);
-    if (!url) return;
-    opened = true;
-    const r = spawnSync('open', [url], { stdio: 'ignore' });
-    console.log(r.status === 0
-      ? '\n  (opened in your browser - approve there to finish)'
-      : '\n  (could not open a browser; paste the URL above)');
-  });
+  const watch = (stream, echo) => {
+    stream.on('data', (chunk) => {
+      const text = chunk.toString();
+      echo.write(text);
+      if (opened) return;
+      seen += text;                 // the URL can straddle two chunks
+      const url = extractAuthUrl(seen);
+      if (!url) return;
+      opened = true;
+      const r = spawnSync('open', [url], { stdio: 'ignore' });
+      console.log(r.status === 0
+        ? '\n  (opened in your browser - approve there to finish)'
+        : '\n  (could not open a browser; paste the URL above)');
+    });
+  };
+  watch(child.stdout, process.stdout);
+  watch(child.stderr, process.stderr);
 
   child.on('exit', (code) => {
     process.exitCode = code ?? 1;
