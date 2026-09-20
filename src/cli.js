@@ -1,7 +1,11 @@
 // ps-mcp CLI. Everything an operator needs after install: wire up the MCP
 // clients, sign in to Google, and diagnose why a tool is missing.
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
-import { accessSync, constants, copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  accessSync, constants, copyFileSync, existsSync, mkdirSync,
+  readFileSync, renameSync, rmSync, writeFileSync,
+} from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -399,6 +403,11 @@ async function fetchJson(url) {
   return res.json();
 }
 
+// Written by `ps-mcp setup` on THIS machine and deliberately absent from the
+// tarball. They must be carried across a swap or the new install forgets where
+// its binaries are and which channel it follows.
+const MACHINE_LOCAL = ['etc/binaries.conf', 'etc/channel'];
+
 export function assetUrl(channel, remote) {
   // Built from version.json's own asset name, never assumed, so a change to the
   // naming scheme does not need a matching client release.
@@ -479,6 +488,86 @@ function pendingUpdates() {
   return pending;
 }
 
+async function applySelfUpdate(channel, remote) {
+  const parent = path.dirname(APP_DIR);
+  const staging = path.join(parent, '.ps-mcp-staging');
+  const previous = path.join(parent, '.ps-mcp-previous');
+  const archive = path.join(staging, remote.asset);
+
+  rmSync(staging, { recursive: true, force: true });
+  mkdirSync(staging, { recursive: true });
+
+  console.log(`  downloading ${remote.asset} (${remote.bytes} bytes)`);
+  const res = await fetch(assetUrl(channel, remote), { redirect: 'follow' });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  writeFileSync(archive, Buffer.from(await res.arrayBuffer()));
+
+  // Verify before unpacking, not after. An archive that fails the checksum is
+  // not something to extract and inspect; it is something to refuse.
+  const got = createHash('sha256').update(readFileSync(archive)).digest('hex');
+  if (got !== remote.sha256) {
+    rmSync(staging, { recursive: true, force: true });
+    throw new Error(`checksum mismatch: expected ${remote.sha256}, got ${got}`);
+  }
+  ok('checksum verified');
+
+  const unpacked = path.join(staging, 'root');
+  mkdirSync(unpacked, { recursive: true });
+  const tar = spawnSync('tar', ['-xzf', archive, '-C', unpacked], { stdio: 'inherit' });
+  if (tar.status !== 0) throw new Error('tar failed');
+
+  // Sanity-check the tree before trusting it. A truncated or wrong archive that
+  // extracts cleanly would otherwise replace a working install with rubble.
+  for (const required of ['src/server.js', 'launcher/ps-mcp-launch', 'etc/tools.yaml', 'package.json']) {
+    if (!existsSync(path.join(unpacked, required))) {
+      rmSync(staging, { recursive: true, force: true });
+      throw new Error(`downloaded tree is missing ${required}; refusing to install it`);
+    }
+  }
+  ok('downloaded tree looks complete');
+
+  for (const rel of MACHINE_LOCAL) {
+    const from = path.join(APP_DIR, rel);
+    if (existsSync(from)) copyFileSync(from, path.join(unpacked, rel));
+  }
+
+  // Two renames, so the window where APP_DIR does not exist is microseconds
+  // rather than the length of a copy.
+  rmSync(previous, { recursive: true, force: true });
+  renameSync(APP_DIR, previous);
+  try {
+    renameSync(unpacked, APP_DIR);
+  } catch (err) {
+    renameSync(previous, APP_DIR);   // put it back rather than leave nothing
+    throw err;
+  }
+  rmSync(staging, { recursive: true, force: true });
+
+  ok(`updated to ${remote.version}`);
+  console.log(`  previous version kept at ${previous} - \`ps-mcp rollback\` restores it`);
+  console.log('  restart Claude Desktop to pick it up.');
+}
+
+function rollback() {
+  const parent = path.dirname(APP_DIR);
+  const previous = path.join(parent, '.ps-mcp-previous');
+  if (!existsSync(previous)) {
+    bad('no previous version to roll back to');
+    process.exitCode = 1;
+    return;
+  }
+  const failed = path.join(parent, '.ps-mcp-rolledback');
+  rmSync(failed, { recursive: true, force: true });
+  renameSync(APP_DIR, failed);
+  renameSync(previous, APP_DIR);
+  // The version just rolled back FROM becomes the new rollback target, so a
+  // second rollback returns you to it rather than stranding you.
+  renameSync(failed, previous);
+  const build = installedBuild();
+  ok(`rolled back to ${build?.version ?? 'the previous version'}`);
+  console.log('  restart Claude Desktop to pick it up.');
+}
+
 async function update() {
   const check = process.argv.includes('--check');
   console.log(check ? 'ps-mcp update --check\n' : 'ps-mcp update\n');
@@ -501,8 +590,16 @@ async function update() {
       break;
     case 'available':
       warn(`ps-mcp: ${build.version} -> ${self.remote.version} available on ${channel}`);
-      console.log(`        ${assetUrl(channel, self.remote)}`);
-      console.log(`        sha256 ${self.remote.sha256}`);
+      if (!check) {
+        try {
+          await applySelfUpdate(channel, self.remote);
+        } catch (err) {
+          bad(`self-update failed: ${err.message}`);
+          console.log('  the existing install is untouched.');
+          process.exitCode = 1;
+          return;
+        }
+      }
       break;
   }
 
@@ -541,12 +638,13 @@ async function update() {
   process.exitCode = failed === 0 ? 0 : 1;
 }
 
-const COMMANDS = { setup, auth, doctor, channel, update, serve: () => spawnSync(LAUNCHER, { stdio: 'inherit' }) };
+const COMMANDS = { setup, auth, doctor, channel, update, rollback, serve: () => spawnSync(LAUNCHER, { stdio: 'inherit' }) };
 const command = process.argv[2];
 if (!command || !COMMANDS[command]) {
   console.log('usage: ps-mcp <setup|auth|doctor|serve>');
   console.log('       ps-mcp channel [dev|prod|stable]');
   console.log('       ps-mcp update [--check]');
+  console.log('       ps-mcp rollback');
   process.exitCode = command ? 1 : 0;
 } else {
   COMMANDS[command]();
