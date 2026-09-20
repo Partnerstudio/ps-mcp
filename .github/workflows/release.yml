@@ -102,4 +102,4 @@ jobs:
             --title "$TITLE" \
             --notes "Rolling ${{ steps.build.outputs.channel }} build from ${GITHUB_SHA}. Promote with a merge forward: dev -> prod -> stable." \
             $( [ "${{ steps.build.outputs.channel }}" = "stable" ] || echo --prerelease ) \
-            "$ASSET" version.json
+            "${{ steps.build.outputs.asset }}" version.json
