@@ -41,6 +41,18 @@ export AWS_PROFILE="${PS_MCP_AWS_PROFILE:-default}"
 # Keychain, which the sandbox deliberately cannot reach.
 export GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND=file
 
+# Give ps-mcp its OWN gws config directory, separate from the one your shell, a
+# gws skill or another MCP server uses. gws DELETES credentials it cannot
+# decrypt, so a single call from elsewhere under a different keyring backend
+# destroys this login. Two callers sharing one directory while disagreeing about
+# the backend is not survivable; isolating removes the whole class.
+export GOOGLE_WORKSPACE_CLI_CONFIG_DIR="${PS_MCP_GWS_DIR:-$HOME/.config/ps-mcp/gws}"
+mkdir -p "$GOOGLE_WORKSPACE_CLI_CONFIG_DIR"
+
+# Record what gws does, so the next credential loss is evidence and not a guess.
+export GOOGLE_WORKSPACE_CLI_LOG_FILE="$GOOGLE_WORKSPACE_CLI_CONFIG_DIR/logs"
+mkdir -p "$GOOGLE_WORKSPACE_CLI_LOG_FILE"
+
 # Seatbelt cannot loop, so install prefixes go into a fixed set of parameters.
 # Unused slots must still be defined or the profile fails to compile; /var/empty
 # is a real, empty, read-only directory, so an unused slot grants nothing.
@@ -61,7 +73,7 @@ set -- /usr/bin/sandbox-exec -f "$PROFILE" \
   -D NODE_DIR="$NODE_DIR" \
   -D TMP="$TMP" \
   -D AWS_DIR="$HOME/.aws" \
-  -D GWS_DIR="$HOME/.config/gws" \
+  -D GWS_DIR="$GOOGLE_WORKSPACE_CLI_CONFIG_DIR" \
   -D GWS_SUPPORT_DIR="$HOME/Library/Application Support/gws" \
   -D HOME_LIBRARY="$HOME/Library" \
   -D TOOL_PREFIX_1="$P1" \

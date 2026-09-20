@@ -15,7 +15,16 @@ const APP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 // server; without it here, the CLI would read a DIFFERENT credential store than
 // the server does. Worse, gws deletes credentials it cannot decrypt, so a CLI
 // call under the wrong backend destroys the server's login.
-const GWS_ENV = { ...process.env, GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND: 'file' };
+const GWS_DIR = process.env.PS_MCP_GWS_DIR ?? path.join(homedir(), '.config', 'ps-mcp', 'gws');
+const GWS_ENV = {
+  ...process.env,
+  GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND: 'file',
+  // Must match launcher/ps-mcp-launch exactly. If the CLI and the server use
+  // different directories, `ps-mcp auth` signs in somewhere the server never
+  // looks and doctor reports a login the tools cannot use.
+  GOOGLE_WORKSPACE_CLI_CONFIG_DIR: GWS_DIR,
+  GOOGLE_WORKSPACE_CLI_LOG_FILE: path.join(GWS_DIR, 'logs'),
+};
 const CONF = path.join(APP_DIR, 'etc', 'binaries.conf');
 const MANIFEST = path.join(APP_DIR, 'etc', 'tools.yaml');
 const LAUNCHER = path.join(APP_DIR, 'launcher', 'ps-mcp-launch');
@@ -154,6 +163,7 @@ export function extractAuthUrl(text) {
 }
 
 function auth() {
+  mkdirSync(path.join(GWS_DIR, 'logs'), { recursive: true });
   const { paths } = loadBinaries(CONF);
   const gws = paths.get('gws');
   if (!gws) {

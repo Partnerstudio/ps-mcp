@@ -194,9 +194,14 @@ as `service.resource.method` (e.g. `drive.files.list`). Use it rather than guess
 
 Two things worth knowing:
 
-- gws keeps credentials in `~/Library/Application Support/gws`, not `~/.config/gws`.
-  The Seatbelt profile therefore carves that one directory out of its `~/Library`
-  deny, and the launcher grants it to `node --permission` as well, because a
+- ps-mcp gives gws its **own** config directory, `~/.config/ps-mcp/gws`, rather
+  than sharing gws's default (`~/Library/Application Support/gws`). gws deletes
+  credentials it cannot decrypt, so a single call from your shell, a gws skill or
+  another MCP server under the default keyring backend wipes the server's login.
+  Isolation removes that entirely; `ps-mcp auth` signs in there and nothing else
+  touches it. Override with `PS_MCP_GWS_DIR`. gws's own JSON logs are written to
+  `logs/` inside it.
+- The launcher grants that directory to `node --permission` too, because a
   node-based child **inherits** the parent's permission flags.
 - `gws` is a `#!/usr/bin/env node` script, so the child environment must carry a
   PATH containing node. `exec-tool.js` derives it from `process.execPath`; without
