@@ -544,8 +544,14 @@ async function applySelfUpdate(channel, remote) {
   rmSync(staging, { recursive: true, force: true });
 
   ok(`updated to ${remote.version}`);
-  console.log(`  previous version kept at ${previous} - \`ps-mcp rollback\` restores it`);
+  console.log(`  previous version kept - \`ps-mcp rollback\` restores it`);
   console.log('  restart Claude Desktop to pick it up.');
+  // A shell's cwd follows the inode, not the path, so anyone who ran this from
+  // inside the install is now sitting in the replaced copy without being told.
+  if (process.cwd().startsWith(APP_DIR)) {
+    console.log('\n  note: your shell is still in the OLD directory (cwd follows the');
+    console.log(`        inode across a rename). run: cd ${APP_DIR}`);
+  }
 }
 
 function rollback() {

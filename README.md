@@ -67,6 +67,28 @@ child inherits Claude Desktop's TCC context.
 `setup` backs up any config it touches and edits only the `ps-mcp` entry, so
 other MCP servers are left exactly as they were.
 
+### Updating
+
+    ps-mcp update --check    what is available, changes nothing
+    ps-mcp update            apply it
+    ps-mcp rollback          restore the previous version
+
+`update` covers both ps-mcp itself and the tools it drives. For ps-mcp it reads
+the channel's `version.json` (a few hundred bytes, carrying the checksum), so
+deciding whether a 5 MB download is needed costs almost nothing. The download is
+checksum-verified **before** extraction, the extracted tree is checked for the
+files a working install must have, and `etc/binaries.conf` and `etc/channel` are
+carried across -- they are machine-local and deliberately absent from the
+tarball.
+
+The swap is two renames, so the window where the install directory does not
+exist is microseconds. If the second rename fails the first is undone, leaving
+the old install rather than nothing. The replaced version is kept for
+`ps-mcp rollback`, and rolling back twice returns you rather than stranding you.
+
+A git checkout is never swapped -- it has no build stamp, and it is told to use
+git instead.
+
 ### Release channels
 
 Each channel is the head of the branch of the same name, and a build is promoted
