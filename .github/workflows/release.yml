@@ -35,6 +35,14 @@ jobs:
           VERSION="$(node -p "require('./package.json').version")"
           SHORT="$(git rev-parse --short HEAD)"
           BUILD="${VERSION}+${CHANNEL}.${SHORT}"
+          # The asset filename carries the build, so a URL is never reused.
+          # Rolling releases reuse the tag, and GitHub's CDN then serves the
+          # PREVIOUS build from cache under the same asset URL -- verified: a
+          # plain download returned the prior commit's tarball while the release
+          # API and a cache-busted fetch both returned the new one. The checksum
+          # catches it, but the updater would fail every attempt until the cache
+          # expired, which looks exactly like a broken updater.
+          ASSET="ps-mcp-${VERSION}-${CHANNEL}.${SHORT}.tar.gz"
 
           # Stamp the build INTO the tarball, so an installed copy knows what it
           # is. Without this an install has no .git and no way to answer "am I
@@ -53,13 +61,13 @@ jobs:
           # Ship what the server needs at runtime and nothing else. No .git, no
           # tests, no CI config, and no etc/binaries.conf or etc/channel -- both
           # are machine-local and are written by `ps-mcp setup` on the target.
-          tar -czf ps-mcp.tar.gz \
+          tar -czf "$ASSET" \
             --exclude='etc/binaries.conf' \
             --exclude='etc/channel' \
             bin launcher src etc tools package.json package-lock.json README.md node_modules
 
-          SHA="$(shasum -a 256 ps-mcp.tar.gz | cut -d' ' -f1)"
-          SIZE="$(wc -c < ps-mcp.tar.gz | tr -d ' ')"
+          SHA="$(shasum -a 256 "$ASSET" | cut -d' ' -f1)"
+          SIZE="$(wc -c < "$ASSET" | tr -d ' ')"
 
           cat > version.json <<JSON
           {
@@ -67,12 +75,13 @@ jobs:
             "version": "${BUILD}",
             "commit": "${GITHUB_SHA}",
             "builtAt": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')",
-            "asset": "ps-mcp.tar.gz",
+            "asset": "${ASSET}",
             "bytes": ${SIZE},
             "sha256": "${SHA}"
           }
           JSON
 
+          echo "asset=${ASSET}" >> "$GITHUB_OUTPUT"
           echo "channel=${CHANNEL}" >> "$GITHUB_OUTPUT"
           echo "build=${BUILD}" >> "$GITHUB_OUTPUT"
           echo "--- version.json ---"; cat version.json
@@ -93,4 +102,4 @@ jobs:
             --title "$TITLE" \
             --notes "Rolling ${{ steps.build.outputs.channel }} build from ${GITHUB_SHA}. Promote with a merge forward: dev -> prod -> stable." \
             $( [ "${{ steps.build.outputs.channel }}" = "stable" ] || echo --prerelease ) \
-            ps-mcp.tar.gz version.json
+            "$ASSET" version.json

@@ -387,9 +387,22 @@ export function installedBuild() {
 }
 
 async function fetchJson(url) {
-  const res = await fetch(url, { redirect: 'follow' });
+  // version.json is the index and shares a URL across builds, so it can be
+  // served stale from cache. The assets it names are immutable -- their
+  // filenames carry the build -- but this one has to be fresh or we compare
+  // against a previous build's numbers.
+  const res = await fetch(`${url}?t=${Date.now()}`, {
+    redirect: 'follow',
+    headers: { 'cache-control': 'no-cache' },
+  });
   if (!res.ok) throw new Error(`${res.status} ${res.statusText} for ${url}`);
   return res.json();
+}
+
+export function assetUrl(channel, remote) {
+  // Built from version.json's own asset name, never assumed, so a change to the
+  // naming scheme does not need a matching client release.
+  return `${RELEASE_BASE}/release-${channel}/${remote.asset}`;
 }
 
 export async function selfUpdateStatus(channel, build) {
@@ -488,6 +501,8 @@ async function update() {
       break;
     case 'available':
       warn(`ps-mcp: ${build.version} -> ${self.remote.version} available on ${channel}`);
+      console.log(`        ${assetUrl(channel, self.remote)}`);
+      console.log(`        sha256 ${self.remote.sha256}`);
       break;
   }
 

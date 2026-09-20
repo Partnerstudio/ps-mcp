@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { extractAuthUrl } from '../src/cli.js';
+import { assetUrl, extractAuthUrl } from '../src/cli.js';
 
 // gws prints its consent URL to stdout and then waits on a loopback port. If we
 // fail to spot it, the user sees a hung command and no browser.
@@ -41,5 +41,23 @@ describe('extractAuthUrl', () => {
   it('rejects a truncated URL, which would open a broken consent page', () => {
     assert.equal(extractAuthUrl(REAL.slice(0, Math.floor(REAL.length / 2))), null);
     assert.equal(extractAuthUrl(REAL.slice(0, REAL.indexOf('client_id='))), null);
+  });
+});
+
+describe('assetUrl', () => {
+  // The asset name comes from version.json rather than being constructed, so
+  // the naming scheme can change server-side without stranding older clients.
+  it('builds the URL from the name the index gives', () => {
+    const url = assetUrl('stable', { asset: 'ps-mcp-0.2.0-stable.abc1234.tar.gz' });
+    assert.match(url, /release-stable\/ps-mcp-0\.2\.0-stable\.abc1234\.tar\.gz$/);
+  });
+
+  it('honours a release base override', () => {
+    const old = process.env.PS_MCP_RELEASE_BASE;
+    try {
+      assert.match(assetUrl('dev', { asset: 'x.tar.gz' }), /releases\/download\/release-dev\/x\.tar\.gz$/);
+    } finally {
+      if (old === undefined) delete process.env.PS_MCP_RELEASE_BASE;
+    }
   });
 });
