@@ -55,7 +55,7 @@ const READ_ONLY_SERVICES = new Set(['admin-reports']);
 // is worse than an absent one: the model cannot tell "not permitted here" from
 // "wrong arguments", and spends turns retrying. Delete an entry to re-enable it.
 //
-// Scope gaps need the consent screen in ai-partnerstudio-io widened; API gaps
+// Scope gaps need the OAuth consent screen widened; API gaps
 // need `gcloud services enable`. Both are deliberately parked.
 const BLOCKED = new Map([
   ['chat', 'no chat scope granted (403)'],

@@ -5,7 +5,7 @@ import { extractAuthUrl } from '../src/cli.js';
 // gws prints its consent URL to stdout and then waits on a loopback port. If we
 // fail to spot it, the user sees a hung command and no browser.
 describe('extractAuthUrl', () => {
-  const REAL = 'https://accounts.google.com/o/oauth2/auth?scope=https://www.googleapis.com/auth/drive%20openid&access_type=offline&redirect_uri=http://localhost:64543&response_type=code&client_id=687984483964-x.apps.googleusercontent.com&prompt=select_account+consent';
+  const REAL = 'https://accounts.google.com/o/oauth2/auth?scope=https://www.googleapis.com/auth/drive%20openid&access_type=offline&redirect_uri=http://localhost:64543&response_type=code&client_id=000000000000-example.apps.googleusercontent.com&prompt=select_account+consent';
 
   it('finds the URL in gws output', () => {
     assert.equal(extractAuthUrl(`Open this URL in your browser to authenticate:\n\n  ${REAL}\n`), REAL);
