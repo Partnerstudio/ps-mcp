@@ -2,3 +2,4 @@ node_modules/
 .DS_Store
 etc/binaries.conf
 etc/channel
+etc/build.json

@@ -36,6 +36,20 @@ jobs:
           SHORT="$(git rev-parse --short HEAD)"
           BUILD="${VERSION}+${CHANNEL}.${SHORT}"
 
+          # Stamp the build INTO the tarball, so an installed copy knows what it
+          # is. Without this an install has no .git and no way to answer "am I
+          # current?" except by downloading and comparing bytes. The sha is not
+          # in here -- it is the hash OF this file's tarball, so it lives in the
+          # separate version.json asset the updater reads first.
+          cat > etc/build.json <<JSON
+          {
+            "channel": "${CHANNEL}",
+            "version": "${BUILD}",
+            "commit": "${GITHUB_SHA}",
+            "builtAt": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          }
+          JSON
+
           # Ship what the server needs at runtime and nothing else. No .git, no
           # tests, no CI config, and no etc/binaries.conf or etc/channel -- both
           # are machine-local and are written by `ps-mcp setup` on the target.
