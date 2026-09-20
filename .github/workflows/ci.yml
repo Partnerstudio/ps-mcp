@@ -1,0 +1,56 @@
+name: ci
+
+on:
+  push:
+    branches: [dev, prod, stable]
+  pull_request:
+  # Weekly, so an upstream gws release that changes the command surface shows up
+  # here rather than as a confusing tool failure on someone's laptop.
+  schedule:
+    - cron: '17 6 * * 1'
+
+jobs:
+  test:
+    # macOS on purpose: this is a macOS-only product (Seatbelt, sandbox-exec,
+    # /bin/sh being bash 3.2), and testing it anywhere else tests a fiction.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - name: launcher and scripts are POSIX sh
+        run: |
+          for f in launcher/ps-mcp-launch bin/ps-mcp bin/ps-mcp-resolve; do
+            sh -n "$f" && echo "ok  $f"
+          done
+      - name: Seatbelt profile compiles
+        run: |
+          /usr/bin/sandbox-exec -f etc/ps-mcp.sb \
+            -D HOME="$HOME" -D WORK="$HOME" -D APP_DIR="$PWD" \
+            -D NODE_DIR="$(dirname "$(dirname "$(command -v node)")")" \
+            -D TMP="${TMPDIR:-/tmp}" -D AWS_DIR="$HOME/.aws" \
+            -D GWS_DIR="$HOME/.config/ps-mcp/gws" \
+            -D GWS_SUPPORT_DIR="$HOME/Library/Application Support/gws" \
+            -D HOME_LIBRARY="$HOME/Library" \
+            -D TOOL_PREFIX_1=/var/empty -D TOOL_PREFIX_2=/var/empty \
+            -D TOOL_PREFIX_3=/var/empty -D TOOL_PREFIX_4=/var/empty \
+            /bin/echo "seatbelt profile compiles and runs"
+
+  manifest:
+    # The gws tools are generated. If gws changes upstream and nobody
+    # regenerates, this fails loudly instead of the manifest quietly drifting.
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: npm ci --ignore-scripts
+      - run: npm install -g @googleworkspace/cli
+      - name: resolve binaries
+        run: bin/ps-mcp-resolve node gws
+      - name: manifest matches the installed gws
+        run: npm run gen:gws -- --check

@@ -1,0 +1,82 @@
+name: release
+
+# One rolling release per channel. Pushing to a channel branch replaces that
+# channel's artifacts, so a client only ever needs one stable URL:
+#
+#   .../releases/download/release-<channel>/version.json
+#   .../releases/download/release-<channel>/ps-mcp.tar.gz
+#
+# Promotion is a merge forward: dev -> prod -> stable.
+on:
+  push:
+    branches: [dev, prod, stable]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest      # packaging only; the tests run on macOS in ci.yml
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+
+      # Runtime dependencies only. Nothing is compiled, so the tarball is
+      # portable; the launcher finds node through etc/binaries.conf at install.
+      - run: npm ci --omit=dev --ignore-scripts
+
+      - name: build the tarball
+        id: build
+        run: |
+          set -eu
+          CHANNEL="${GITHUB_REF_NAME}"
+          VERSION="$(node -p "require('./package.json').version")"
+          SHORT="$(git rev-parse --short HEAD)"
+          BUILD="${VERSION}+${CHANNEL}.${SHORT}"
+
+          # Ship what the server needs at runtime and nothing else. No .git, no
+          # tests, no CI config, and no etc/binaries.conf or etc/channel -- both
+          # are machine-local and are written by `ps-mcp setup` on the target.
+          tar -czf ps-mcp.tar.gz \
+            --exclude='etc/binaries.conf' \
+            --exclude='etc/channel' \
+            bin launcher src etc tools package.json package-lock.json README.md node_modules
+
+          SHA="$(shasum -a 256 ps-mcp.tar.gz | cut -d' ' -f1)"
+          SIZE="$(wc -c < ps-mcp.tar.gz | tr -d ' ')"
+
+          cat > version.json <<JSON
+          {
+            "channel": "${CHANNEL}",
+            "version": "${BUILD}",
+            "commit": "${GITHUB_SHA}",
+            "builtAt": "$(date -u '+%Y-%m-%dT%H:%M:%SZ')",
+            "asset": "ps-mcp.tar.gz",
+            "bytes": ${SIZE},
+            "sha256": "${SHA}"
+          }
+          JSON
+
+          echo "channel=${CHANNEL}" >> "$GITHUB_OUTPUT"
+          echo "build=${BUILD}" >> "$GITHUB_OUTPUT"
+          echo "--- version.json ---"; cat version.json
+
+      - name: publish the channel release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -eu
+          TAG="release-${{ steps.build.outputs.channel }}"
+          TITLE="${{ steps.build.outputs.channel }} ${{ steps.build.outputs.build }}"
+
+          # Recreate rather than edit: a rolling tag that moves is the whole
+          # point, and deleting first keeps the assets from accumulating.
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" \
+            --target "${GITHUB_SHA}" \
+            --title "$TITLE" \
+            --notes "Rolling ${{ steps.build.outputs.channel }} build from ${GITHUB_SHA}. Promote with a merge forward: dev -> prod -> stable." \
+            $( [ "${{ steps.build.outputs.channel }}" = "stable" ] || echo --prerelease ) \
+            ps-mcp.tar.gz version.json
