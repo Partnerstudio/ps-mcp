@@ -366,6 +366,50 @@ function doctor() {
 // merely out of date. Checking is read-only and safe to run often; applying is
 // a separate, explicit act.
 
+// --- self-update -----------------------------------------------------------
+//
+// Each channel has one rolling release, so the URLs never change. version.json
+// is small and carries the checksum, which means we can decide whether to
+// download 5 MB without downloading 5 MB.
+const RELEASE_BASE = process.env.PS_MCP_RELEASE_BASE
+  ?? 'https://github.com/Partnerstudio/ps-mcp/releases/download';
+
+const BUILD_FILE = path.join(APP_DIR, 'etc', 'build.json');
+
+export function installedBuild() {
+  try {
+    return JSON.parse(readFileSync(BUILD_FILE, 'utf8'));
+  } catch {
+    // A source checkout has no build stamp. That is not an error: it means this
+    // copy is managed by git, and replacing it from a tarball would be wrong.
+    return null;
+  }
+}
+
+async function fetchJson(url) {
+  const res = await fetch(url, { redirect: 'follow' });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText} for ${url}`);
+  return res.json();
+}
+
+export async function selfUpdateStatus(channel, build) {
+  if (!build) return { kind: 'source-checkout' };
+  let remote;
+  try {
+    remote = await fetchJson(`${RELEASE_BASE}/release-${channel}/version.json`);
+  } catch (err) {
+    return { kind: 'unreachable', error: err.message };
+  }
+  if (remote.channel !== channel) {
+    // Following stable but handed a dev build would be a silent downgrade of
+    // everyone's risk appetite.
+    return { kind: 'channel-mismatch', remote };
+  }
+  return remote.version === build.version
+    ? { kind: 'current', remote }
+    : { kind: 'available', remote };
+}
+
 function npmLatest(pkg) {
   try {
     return execFileSync('npm', ['view', pkg, 'version'], {
@@ -422,12 +466,33 @@ function pendingUpdates() {
   return pending;
 }
 
-function update() {
+async function update() {
   const check = process.argv.includes('--check');
   console.log(check ? 'ps-mcp update --check\n' : 'ps-mcp update\n');
 
+  const build = installedBuild();
+  const channel = currentChannel();
+  const self = await selfUpdateStatus(channel, build);
+  switch (self.kind) {
+    case 'source-checkout':
+      ok(`ps-mcp: git checkout on ${channel} - update with git, not this command`);
+      break;
+    case 'unreachable':
+      warn(`ps-mcp: could not reach the ${channel} channel (${self.error})`);
+      break;
+    case 'channel-mismatch':
+      warn(`ps-mcp: ${channel} channel served a ${self.remote.channel} build; refusing`);
+      break;
+    case 'current':
+      ok(`ps-mcp: ${build.version} is current on ${channel}`);
+      break;
+    case 'available':
+      warn(`ps-mcp: ${build.version} -> ${self.remote.version} available on ${channel}`);
+      break;
+  }
+
   const pending = pendingUpdates();
-  if (pending.length === 0) {
+  if (pending.length === 0 && self.kind !== 'available') {
     ok('everything is current');
     return;
   }
