@@ -29,10 +29,11 @@ Out, this round, each for a stated reason:
 - **Central collection.** The record format is designed so an upload step is an
   addition rather than a rewrite, but nothing leaves the machine yet.
 - **Metering result bytes inside ps-mcp.** It would let a turn that calls
-  several tools at once be split exactly. Measured across 60 transcripts and
-  1,154 tool-calling turns, **99.8% called exactly one tool**, so the split
-  affects 0.2% of the data. Those turns are counted and reported, not
-  apportioned by guesswork. Revisit if that share grows.
+  several tools at once be split exactly. Measured over the full ledger --
+  15,005 tool calls -- this splits by client: **Claude Code batches almost
+  never (2 turns, 0.0%), Codex often (6.7%)**. Those turns are counted and
+  excluded rather than apportioned by guesswork. Worth revisiting if Codex
+  becomes the main surface; irrelevant if Claude Code is.
 - **Claude Desktop chat.** It keeps no local token record. See below.
 
 ## What makes this possible
@@ -205,15 +206,25 @@ These are the ways this silently produces a wrong number. Each needs a test.
    attributed to the most recent preceding `turn_context`. Events before any
    `turn_context` are recorded with `model: null` rather than guessed.
 
-5. **Compaction breaks the footprint arithmetic.** When a conversation is
-   compacted the context shrinks, so `context(N+1) - context(N)` goes negative
-   and the footprint is meaningless. Those turns are skipped and counted, never
-   clamped to zero, because zero would read as a free tool call.
+5. **A shrinking context means the turns are not consecutive.** When
+   `context(N+1) - context(N)` goes negative the footprint is meaningless.
+   Those turns are excluded and counted, never clamped to zero, because zero
+   would read as a free tool call.
+
+   Measured, this is the largest exclusion: **23.6% of Claude Code tool calls
+   and 17.5% of Codex ones**. Compaction explains some of it. The rest is
+   almost certainly transcript structure -- a session file holds subagent
+   threads and the branches of a rewound conversation, so consecutive *lines*
+   are not consecutive *turns*. Subagents are already separated by their
+   `isSidechain` flag; branches are not, because doing so means reconstructing
+   the active thread through `parentUuid` chains. Until that is done the
+   report states its coverage (currently 76%) rather than implying it is
+   complete.
 
 6. **Turns calling several tools.** The footprint is combined and cannot be
    split without knowing each result's size. Such turns are excluded from
-   per-tool figures and reported as a separate count, so the totals stay honest
-   about what they omit. Measured at 0.2% of tool-calling turns.
+   per-tool figures and reported as a separate count. Measured at 0.0% for
+   Claude Code and 6.7% for Codex, which batches tool calls much more.
 
 7. **The last turn of a session has no successor,** so its tool call has no
    measurable footprint. Excluded and counted with the rest.
@@ -266,7 +277,11 @@ calls, entry cost and carried cost.
 
 Every view states the collection window, the number of skipped records, and what
 it cannot see: Claude Desktop chat, and the turns excluded from attribution
-(compacted, multi-tool, or last in a session) with their counts.
+(context shrank, multi-tool, or last in a thread) with their counts.
+
+The attribution views additionally print the share of tool calls they managed
+to attribute. A ranking built from three quarters of the data is useful; one
+that does not say so is not.
 
 `--json` emits the aggregate for sending on. This is the seam a later central
 collection step plugs into.

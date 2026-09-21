@@ -12,6 +12,10 @@ import { fileURLToPath } from 'node:url';
 import { loadBinaries } from './binaries.js';
 import { loadManifest } from './manifest.js';
 import { S3_TOOL_NAMES } from './s3-tools.js';
+import {
+  aggregate, appendLedger, attribute, byDomain, collect,
+  LEDGER, newRecords, readLedger, since,
+} from './usage.js';
 
 const APP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -707,12 +711,101 @@ async function update() {
   process.exitCode = failed === 0 ? 0 : 1;
 }
 
-const COMMANDS = { setup, auth, doctor, channel, update, rollback, serve: () => spawnSync(LAUNCHER, { stdio: 'inherit' }) };
+// --- usage ------------------------------------------------------------------
+//
+// The clients already write token accounting to disk. We read it, normalise the
+// two formats into one, and keep our own copy -- because they clean theirs up,
+// and a pilot report written in week six still needs week one.
+
+const flag = (name) => process.argv.includes(name);
+const option = (name) => {
+  const i = process.argv.indexOf(name);
+  return i === -1 ? null : (process.argv[i + 1] ?? null);
+};
+const num = (v) => v.toLocaleString('en-US');
+
+function table(headers, rows, aligns) {
+  const widths = headers.map((h, i) => Math.max(h.length, ...rows.map((r) => String(r[i]).length)));
+  const line = (cells) => `  ${cells
+    .map((c, i) => (aligns[i] === 'r' ? String(c).padStart(widths[i]) : String(c).padEnd(widths[i])))
+    .join('  ')}`.trimEnd();
+  console.log(line(headers));
+  for (const r of rows) console.log(line(r));
+}
+
+function usageReport() {
+  const found = collect();
+  const held = readLedger();
+  const added = newRecords(held, found.records);
+  appendLedger(added);
+
+  const day = option('--since');
+  const all = since([...held, ...added], day);
+  const tools = attribute(all);
+
+  if (flag('--json')) {
+    const { rows, totals } = aggregate(all);
+    console.log(JSON.stringify({
+      since: day, turns: all.length, ledger: LEDGER,
+      totals, rows, byTool: tools.byTool, byDomain: byDomain(tools.byTool),
+      excluded: tools.excluded, skipped: found.skipped,
+    }, null, 2));
+    return;
+  }
+
+  console.log(`\nps-mcp usage${day ? ` since ${day}` : ''}\n`);
+  console.log(`  collected ${num(added.length)} new turn(s); ledger holds ${num(held.length + added.length)}\n`);
+
+  if (flag('--by-tool') || flag('--by-domain')) {
+    const wide = flag('--by-tool');
+    const rows = wide
+      ? tools.byTool.map((t) => [t.tool, t.domain ?? '-', num(t.calls), num(t.entry), num(t.carried)])
+      : byDomain(tools.byTool).map((d) => [d.domain, num(d.calls), num(d.entry), num(d.carried)]);
+    if (!rows.length) console.log('  nothing to attribute yet');
+    else if (wide) table(['tool', 'domain', 'calls', 'entry cost', 'carried cost'], rows, ['l', 'l', 'r', 'r', 'r']);
+    else table(['domain', 'calls', 'entry cost', 'carried cost'], rows, ['l', 'r', 'r', 'r']);
+    const e = tools.excluded;
+    const counted = tools.byTool.reduce((a, t) => a + t.calls, 0);
+    const seen = counted + e.compacted + e.multiTool + e.lastTurn;
+    // A ranking built from three quarters of the data is useful; one that does
+    // not say so is not.
+    console.log(`\n  attributed ${num(counted)} of ${num(seen)} tool calls (${Math.round(100 * counted / Math.max(seen, 1))}%)`);
+    console.log(`  not attributed: ${num(e.compacted)} context shrank, ${num(e.multiTool)} multi-tool, ${num(e.lastTurn)} last-in-thread`);
+    console.log('  entry cost is tokens the result added to context; carried cost is that again for every later turn');
+  } else {
+    const { rows, totals } = aggregate(all);
+    if (!rows.length) console.log('  no token records found yet');
+    else {
+      table(
+        ['source', 'model', 'turns', 'input', 'output', 'cache write', 'cache read'],
+        rows.map((r) => [r.source, r.model, num(r.turns), num(r.in), num(r.out), num(r.cache_write), num(r.cache_read)]),
+        ['l', 'l', 'r', 'r', 'r', 'r', 'r'],
+      );
+      console.log(`\n  total tokens: ${num(totals.in + totals.out + totals.cache_write + totals.cache_read)}`);
+    }
+  }
+
+  // Saying what a number leaves out is part of the number.
+  console.log('\n  not counted: Claude Desktop chat keeps no local token record.');
+  const sk = found.skipped;
+  const notes = [
+    sk.parse && `${num(sk.parse)} unparseable line(s)`,
+    sk.shape && `${num(sk.shape)} record(s) in an unrecognised shape`,
+    sk.iterations && `${num(sk.iterations)} multi-iteration message(s)`,
+    sk.mismatch && `${num(sk.mismatch)} session(s) whose deltas disagree with their own total`,
+    sk.unreadable.length && `${num(sk.unreadable.length)} unreadable file(s)`,
+  ].filter(Boolean);
+  if (notes.length) console.log(`  skipped: ${notes.join(', ')}`);
+  console.log('');
+}
+
+const COMMANDS = { setup, auth, doctor, channel, update, rollback, usage: usageReport, serve: () => spawnSync(LAUNCHER, { stdio: 'inherit' }) };
 const command = process.argv[2];
 if (!command || !COMMANDS[command]) {
   console.log('usage: ps-mcp <setup|auth|doctor|serve>');
   console.log('       ps-mcp channel [dev|beta|stable]');
   console.log('       ps-mcp update [--check]');
+  console.log('       ps-mcp usage [--since YYYY-MM-DD] [--by-tool|--by-domain] [--json]');
   console.log('       ps-mcp rollback');
   process.exitCode = command ? 1 : 0;
 } else {
