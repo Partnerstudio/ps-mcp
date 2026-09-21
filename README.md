@@ -14,6 +14,7 @@ Design decisions live in `CLAUDE.md`. This file covers running it.
     src/                        server, manifest loader, exec + sdk runners,
                                 path guard, S3 tools
     test/                       node:test, no framework
+    docs/first-run.md           give this to someone testing on a fresh Mac
 
 ## Installing
 

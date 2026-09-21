@@ -64,7 +64,7 @@ jobs:
           tar -czf "$ASSET" \
             --exclude='etc/binaries.conf' \
             --exclude='etc/channel' \
-            bin launcher src etc tools package.json package-lock.json README.md node_modules
+            bin launcher src etc tools docs package.json package-lock.json README.md node_modules
 
           SHA="$(shasum -a 256 "$ASSET" | cut -d' ' -f1)"
           SIZE="$(wc -c < "$ASSET" | tr -d ' ')"
