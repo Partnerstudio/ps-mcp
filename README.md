@@ -15,6 +15,7 @@ Design decisions live in `CLAUDE.md`. This file covers running it.
                                 path guard, S3 tools
     test/                       node:test, no framework
     docs/first-run.md           give this to someone testing on a fresh Mac
+    docs/specs/                 designs agreed before implementation
 
 ## Installing
 
