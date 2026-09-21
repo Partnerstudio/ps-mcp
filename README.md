@@ -120,13 +120,13 @@ git instead.
 Each channel is the head of the branch of the same name, and a build is promoted
 by merging forward:
 
-    dev  ->  prod  ->  stable
+    dev  ->  beta  ->  stable
 
 - **dev** - every merge to the dev branch; expect breakage
-- **prod** - promoted from dev and soaking; broadly trustworthy
-- **stable** - promoted from prod after soaking; the most conservative
+- **beta** - promoted from dev and soaking; broadly trustworthy
+- **stable** - promoted from beta after soaking; the most conservative
 
-Note the ordering: `stable` is the most conservative, not `prod`. A machine's
+A machine's
 channel lives in `etc/channel` (gitignored, machine-local) and defaults to
 `stable`.
 

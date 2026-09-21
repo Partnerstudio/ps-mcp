@@ -37,22 +37,32 @@ const CODEX_CFG = path.join(homedir(), '.codex', 'config.toml');
 const CHANNEL_FILE = path.join(APP_DIR, 'etc', 'channel');
 
 // Release channels, each the head of the branch of the same name. A build is
-// promoted by merging forward: dev -> prod -> stable. Note the ordering --
-// `stable` is the MOST conservative, not `prod`; prod is the soak stage that
-// sits between them.
+// promoted by merging forward: dev -> beta -> stable.
 //
 // Which channel a machine follows is a local choice, so it is not in git.
-const CHANNELS = ['dev', 'prod', 'stable'];
+const CHANNELS = ['dev', 'beta', 'stable'];
 const CHANNEL_HELP = {
   dev: 'every merge to the dev branch; expect breakage',
-  prod: 'promoted from dev and soaking; broadly trustworthy',
-  stable: 'promoted from prod after soaking; the most conservative',
+  beta: 'promoted from dev and soaking; broadly trustworthy',
+  stable: 'promoted from beta after soaking; the most conservative',
 };
+
+// The middle channel was called `prod` until it was renamed: it sits between dev
+// and stable, but `prod` reads as the most conservative tier, which is what
+// `stable` is. Migrate rather than silently falling back, or a machine that
+// chose the middle tier would be moved to a different one without being told.
+const RENAMED = { prod: 'beta' };
 
 function currentChannel() {
   try {
     const value = readFileSync(CHANNEL_FILE, 'utf8').trim();
-    return CHANNELS.includes(value) ? value : 'stable';
+    if (CHANNELS.includes(value)) return value;
+    const renamed = RENAMED[value];
+    if (renamed) {
+      writeFileSync(CHANNEL_FILE, `${renamed}\n`);
+      return renamed;
+    }
+    return 'stable';
   } catch {
     return 'stable';
   }
@@ -71,7 +81,7 @@ function channel() {
   }
   writeFileSync(CHANNEL_FILE, `${requested}\n`);
   ok(`following the ${requested} channel - ${CHANNEL_HELP[requested]}`);
-  console.log('\n  promotion flows forward:  dev -> prod -> stable');
+  console.log('\n  promotion flows forward:  dev -> beta -> stable');
   for (const name of CHANNELS) {
     const mark = name === requested ? '*' : ' ';
     console.log(`   ${mark} ${name.padEnd(7)} ${CHANNEL_HELP[name]}`);
@@ -660,7 +670,7 @@ const COMMANDS = { setup, auth, doctor, channel, update, rollback, serve: () => 
 const command = process.argv[2];
 if (!command || !COMMANDS[command]) {
   console.log('usage: ps-mcp <setup|auth|doctor|serve>');
-  console.log('       ps-mcp channel [dev|prod|stable]');
+  console.log('       ps-mcp channel [dev|beta|stable]');
   console.log('       ps-mcp update [--check]');
   console.log('       ps-mcp rollback');
   process.exitCode = command ? 1 : 0;

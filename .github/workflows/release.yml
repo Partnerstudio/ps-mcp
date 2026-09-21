@@ -6,10 +6,10 @@ name: release
 #   .../releases/download/release-<channel>/version.json
 #   .../releases/download/release-<channel>/ps-mcp.tar.gz
 #
-# Promotion is a merge forward: dev -> prod -> stable.
+# Promotion is a merge forward: dev -> beta -> stable.
 on:
   push:
-    branches: [dev, prod, stable]
+    branches: [dev, beta, stable]
 
 permissions:
   contents: write
@@ -100,6 +100,6 @@ jobs:
           gh release create "$TAG" \
             --target "${GITHUB_SHA}" \
             --title "$TITLE" \
-            --notes "Rolling ${{ steps.build.outputs.channel }} build from ${GITHUB_SHA}. Promote with a merge forward: dev -> prod -> stable." \
+            --notes "Rolling ${{ steps.build.outputs.channel }} build from ${GITHUB_SHA}. Promote with a merge forward: dev -> beta -> stable." \
             $( [ "${{ steps.build.outputs.channel }}" = "stable" ] || echo --prerelease ) \
             "${{ steps.build.outputs.asset }}" version.json

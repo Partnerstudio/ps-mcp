@@ -2,7 +2,7 @@ name: ci
 
 on:
   push:
-    branches: [dev, prod, stable]
+    branches: [dev, beta, stable]
   pull_request:
   # Weekly, so an upstream gws release that changes the command surface shows up
   # here rather than as a confusing tool failure on someone's laptop.

@@ -20,7 +20,7 @@ while [ $# -gt 0 ]; do
     --channel) CHANNEL=$2; shift 2 ;;
     --prefix)  PREFIX=$2; shift 2 ;;
     -h|--help)
-      echo "usage: install.sh [--channel dev|prod|stable] [--prefix DIR]"; exit 0 ;;
+      echo "usage: install.sh [--channel dev|beta|stable] [--prefix DIR]"; exit 0 ;;
     *) echo "install.sh: unknown option $1" >&2; exit 2 ;;
   esac
 done
