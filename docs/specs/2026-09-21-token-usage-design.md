@@ -18,6 +18,7 @@ In:
 - Claude Code sessions (the CLI, and Claude Code running inside Claude Desktop).
 - Codex sessions.
 - A durable local ledger that survives the clients deleting their transcripts.
+- Attribution of token spend to the tool that caused it, rolled up by domain.
 - A `ps-mcp usage` report.
 
 Out, this round, each for a stated reason:
@@ -27,9 +28,11 @@ Out, this round, each for a stated reason:
   built now would be guesswork we would have to revisit anyway.
 - **Central collection.** The record format is designed so an upload step is an
   addition rather than a rewrite, but nothing leaves the machine yet.
-- **ps-mcp's own tool calls.** They consume no tokens. Their cost shows up as
-  the bytes they return into the model's context, which is a different
-  measurement and a separate piece of work.
+- **Metering result bytes inside ps-mcp.** It would let a turn that calls
+  several tools at once be split exactly. Measured across 60 transcripts and
+  1,154 tool-calling turns, **99.8% called exactly one tool**, so the split
+  affects 0.2% of the data. Those turns are counted and reported, not
+  apportioned by guesswork. Revisit if that share grows.
 - **Claude Desktop chat.** It keeps no local token record. See below.
 
 ## What makes this possible
@@ -62,6 +65,27 @@ tokens and prices them separately.
 local token record; `claude-code-sessions/` holds session metadata and a model
 id but no usage. A pilot report must say so rather than let a reader assume the
 total is complete.
+
+### Coverage
+
+Attributing spend to a ps-mcp tool needs the tool call and the token counts in
+the same transcript. Those two only coincide where ps-mcp is configured *and*
+the client records usage:
+
+| Client | ps-mcp configured | Tokens recorded | Tool spend attributable |
+|---|---|---|---|
+| Claude Code | yes, since `setup` writes `~/.claude.json` | yes | **yes** |
+| Codex | yes | yes | **yes** |
+| Claude Desktop | yes | no | no |
+
+`ps-mcp setup` configures Claude Code for exactly this reason. It is optional:
+where Claude Code is not installed the step reports `not installed` and nothing
+is created.
+
+The cost of that decision is honest and measurable: ps-mcp's 30 tools add about
+25 KB of JSON, roughly 6,300 tokens, to the tool list of every Claude Code
+session. It is cached after the first turn, but it is not free, and it is a
+cost incurred in order to measure costs.
 
 ## Architecture
 
@@ -106,6 +130,55 @@ a redesign.
 Re-running is safe and idempotent. The ledger is the durable copy; transcripts
 are the source of truth only for as long as the clients keep them.
 
+## Attribution
+
+### Why the obvious method is wrong
+
+Assigning a turn's tokens to the tool it called does not work. A turn's input is
+the entire context accumulated so far, dominated by everything that came before,
+not by the tool being called now. Every tool would appear to cost roughly the
+size of the conversation at the moment it happened to be used.
+
+The real cost of a tool call is its **result sitting in context**, recharged on
+every subsequent turn, mostly at cache-read rates. So the measure is the
+context footprint:
+
+    context(N)   = input_tokens + cache_read + cache_creation   at turn N
+    footprint(N) = context(N+1) - context(N) - output_tokens(N)
+
+That is the number of tokens the tool's result added to the conversation. Run
+over a real 1,112-turn transcript it yields, for example, 418 `Bash` calls
+averaging 452 tokens each, 189,273 tokens in total.
+
+This is the number worth having. Call frequency measures adoption; footprint
+measures cost, and a tool called three times returning 30,000 tokens each is
+far more expensive than one called forty times returning 200.
+
+Two derived figures the report should show:
+
+- **Entry cost** -- the footprint itself, paid once.
+- **Carried cost** -- footprint multiplied by the turns that follow it in the
+  same session, which is what the conversation actually pays.
+
+### Domain rollup
+
+Tool names are already service-prefixed, so the map is static:
+
+    gmail_*     -> Mail        calendar_*  -> Calendar
+    docs_*      -> Docs        sheets_*    -> Sheets
+    slides_*    -> Slides      drive_*     -> Drive
+    s3_*        -> Storage     ffprobe_*   -> Media
+    gws_schema  -> Discovery
+
+`workflow_*` deliberately has no domain. `workflow_meeting_prep` touches
+calendar, docs and mail at once; forcing it into one bucket would make every
+domain total wrong in a way nobody could see. It rolls up as its own line.
+
+**Meeting transcription is not a tool.** Meet transcripts land in Drive as Docs,
+so `drive_read` and `docs_read` cover retrieving one, and that is what a Mail or
+Drive line will reflect. Audio-to-text transcription does not exist in the
+manifest and must not be implied by the report.
+
 ## Correctness risks
 
 These are the ways this silently produces a wrong number. Each needs a test.
@@ -132,10 +205,23 @@ These are the ways this silently produces a wrong number. Each needs a test.
    attributed to the most recent preceding `turn_context`. Events before any
    `turn_context` are recorded with `model: null` rather than guessed.
 
-5. **Transcript retention.** Clients clean up. The ledger exists precisely so a
+5. **Compaction breaks the footprint arithmetic.** When a conversation is
+   compacted the context shrinks, so `context(N+1) - context(N)` goes negative
+   and the footprint is meaningless. Those turns are skipped and counted, never
+   clamped to zero, because zero would read as a free tool call.
+
+6. **Turns calling several tools.** The footprint is combined and cannot be
+   split without knowing each result's size. Such turns are excluded from
+   per-tool figures and reported as a separate count, so the totals stay honest
+   about what they omit. Measured at 0.2% of tool-calling turns.
+
+7. **The last turn of a session has no successor,** so its tool call has no
+   measurable footprint. Excluded and counted with the rest.
+
+8. **Transcript retention.** Clients clean up. The ledger exists precisely so a
    pilot report written in week six can still see week one.
 
-6. **Concurrent appends.** Two `ps-mcp usage` runs at once could interleave.
+9. **Concurrent appends.** Two `ps-mcp usage` runs at once could interleave.
    Deduplication is what makes this safe: a doubled or interleaved write is
    discarded on the next read. `O_APPEND` with one write per line keeps it
    unlikely in the first place, but the correctness rests on the dedup, not on
@@ -172,11 +258,15 @@ about what it skipped:
 
 ## Report
 
-    ps-mcp usage [--since YYYY-MM-DD] [--json]
+    ps-mcp usage [--since YYYY-MM-DD] [--by-tool] [--by-domain] [--json]
 
 Default output groups by source and model, with a column per token class and a
-total row. It states the collection window, the number of skipped records, and
-plainly that Claude Desktop chat is not included.
+total row. `--by-tool` and `--by-domain` group by the attribution above, showing
+calls, entry cost and carried cost.
+
+Every view states the collection window, the number of skipped records, and what
+it cannot see: Claude Desktop chat, and the turns excluded from attribution
+(compacted, multi-tool, or last in a session) with their counts.
 
 `--json` emits the aggregate for sending on. This is the seam a later central
 collection step plugs into.
@@ -192,6 +282,13 @@ collection step plugs into.
 - Deduplication: collecting the same fixture twice yields one set of records.
 - Privacy: no content string from either fixture appears in any output record.
 - Missing directories produce an empty result, not an exception.
+- Footprint: a fixture of four turns with known context sizes yields the
+  arithmetic footprint for the tool in the middle.
+- Exclusions: a compacted turn, a two-tool turn and a session's last turn are
+  each excluded from per-tool figures and counted, not silently dropped and not
+  recorded as zero.
+- Domain rollup: `workflow_*` appears on its own line and is absent from every
+  domain total.
 
 ## Success criteria
 
@@ -201,7 +298,12 @@ collection step plugs into.
 3. Deleting a source transcript afterwards does not change the totals.
 4. Codex per-session delta sums equal that session's final cumulative figure.
 5. No fixture content string appears anywhere in the ledger.
-6. The report names what it cannot see.
+6. `--by-tool` totals over a real transcript sum to no more than that
+   session's total input tokens. A footprint attribution that exceeds the
+   tokens actually billed is arithmetically impossible and means the method
+   is wrong.
+7. The count of excluded turns is reported, and the report names what it
+   cannot see: Claude Desktop chat, and each exclusion class.
 
 ## Deferred, with defaults
 

@@ -31,8 +31,12 @@ Nothing is installed system-wide. Deleting that one directory uninstalls it.
 
     ~/.local/ps-mcp/bin/ps-mcp setup
 
-This edits `~/Library/Application Support/Claude/claude_desktop_config.json`
-and `~/.codex/config.toml`, backing up anything it replaces.
+This edits `~/Library/Application Support/Claude/claude_desktop_config.json`,
+`~/.codex/config.toml` and, if you have Claude Code, `~/.claude.json`, backing
+up anything it replaces. If you do not have Claude Code it says
+`not installed` and creates nothing.
+
+Close those apps before running it, so nothing is writing to the same files.
 
 If `~/.local/bin` is on your PATH the installer also linked `ps-mcp` there, so
 you can drop the long prefix from here on.
@@ -83,6 +87,7 @@ this -- three warnings, no failures:
 
       ok    Claude Desktop configured
       ok    Codex configured
+      ok    Claude Code not installed, nothing to configure
       ok    launcher is executable
 
     No failures, but 3 warning(s) above - some tools will not work.
@@ -121,6 +126,7 @@ Quit Claude Desktop completely and reopen it. Then ask for something ordinary:
     rm -rf ~/.local/ps-mcp ~/.config/ps-mcp ~/.local/bin/ps-mcp
 
 Then remove the `ps-mcp` entry from
-`~/Library/Application Support/Claude/claude_desktop_config.json` and the
-`[mcp_servers.ps-mcp]` block from `~/.codex/config.toml`. Backups of both are
-sitting next to the originals.
+`~/Library/Application Support/Claude/claude_desktop_config.json`, the
+`[mcp_servers.ps-mcp]` block from `~/.codex/config.toml`, and the `ps-mcp` key
+under `mcpServers` in `~/.claude.json` if it is there. Backups sit next to the
+originals.

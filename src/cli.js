@@ -34,6 +34,7 @@ const MANIFEST = path.join(APP_DIR, 'etc', 'tools.yaml');
 const LAUNCHER = path.join(APP_DIR, 'launcher', 'ps-mcp-launch');
 const CLAUDE_CFG = path.join(homedir(), 'Library', 'Application Support', 'Claude', 'claude_desktop_config.json');
 const CODEX_CFG = path.join(homedir(), '.codex', 'config.toml');
+const CLAUDE_CODE_CFG = path.join(homedir(), '.claude.json');
 const CHANNEL_FILE = path.join(APP_DIR, 'etc', 'channel');
 
 // Release channels, each the head of the branch of the same name. A build is
@@ -121,6 +122,39 @@ function writeClaudeConfig() {
   return before === JSON.stringify(config.mcpServers['ps-mcp']) ? 'unchanged' : 'written';
 }
 
+// Claude Code keeps its MCP servers in ~/.claude.json, the same `mcpServers`
+// shape as Claude Desktop but in a much larger file that also holds startup
+// counters, cached feature flags and every other server. Merge one key and
+// leave the rest of the document exactly as it was.
+export function withPsMcp(config, launcher) {
+  const next = { ...config, mcpServers: { ...(config.mcpServers ?? {}) } };
+  next.mcpServers['ps-mcp'] = { command: launcher };
+  return next;
+}
+
+function writeClaudeCodeConfig() {
+  // A Mac with only Claude Desktop is a normal setup, so absence is not a
+  // failure -- and we do not create config for an app that is not installed.
+  if (!existsSync(CLAUDE_CODE_CFG) && !existsSync(path.join(homedir(), '.claude'))) {
+    return 'not installed';
+  }
+  const config = existsSync(CLAUDE_CODE_CFG)
+    ? JSON.parse(readFileSync(CLAUDE_CODE_CFG, 'utf8'))
+    : {};
+  const before = JSON.stringify(config.mcpServers?.['ps-mcp'] ?? null);
+  const next = withPsMcp(config, LAUNCHER);
+  if (before === JSON.stringify(next.mcpServers['ps-mcp'])) return 'unchanged';
+
+  if (existsSync(CLAUDE_CODE_CFG)) backup(CLAUDE_CODE_CFG);
+  // Claude Code rewrites this file while it is running. Write a temp file and
+  // rename, so an interrupted write cannot leave it truncated -- losing this
+  // file loses every other MCP server the user has configured.
+  const tmp = `${CLAUDE_CODE_CFG}.ps-mcp.tmp`;
+  writeFileSync(tmp, `${JSON.stringify(next, null, 2)}\n`);
+  renameSync(tmp, CLAUDE_CODE_CFG);
+  return 'written';
+}
+
 function writeCodexConfig() {
   mkdirSync(path.dirname(CODEX_CFG), { recursive: true });
   const block = `[mcp_servers.ps-mcp]\ncommand = "${LAUNCHER}"\n`;
@@ -149,6 +183,7 @@ function setup() {
   }
   ok(`Claude Desktop config ${writeClaudeConfig()}`);
   ok(`Codex config ${writeCodexConfig()}`);
+  ok(`Claude Code config ${writeClaudeCodeConfig()}`);
   console.log('\nNext:');
   console.log('  ps-mcp auth      sign in to Google in a browser');
   console.log('  ps-mcp doctor    check everything is wired up');
@@ -364,6 +399,12 @@ function doctor() {
     if (existsSync(file) && readFileSync(file, 'utf8').includes(needle)) ok(`${label} configured`);
     else warn(`${label} not configured - run \`ps-mcp setup\``);
   }
+
+  // Claude Code is optional, so a missing config is only worth mentioning when
+  // the app is actually there.
+  if (!existsSync(CLAUDE_CODE_CFG)) ok('Claude Code not installed, nothing to configure');
+  else if (readFileSync(CLAUDE_CODE_CFG, 'utf8').includes('"ps-mcp"')) ok('Claude Code configured');
+  else warn('Claude Code not configured - run `ps-mcp setup`');
 
   try {
     accessSync(LAUNCHER, constants.X_OK);

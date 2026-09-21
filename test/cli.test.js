@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { assetUrl, extractAuthUrl } from '../src/cli.js';
+import { assetUrl, extractAuthUrl, withPsMcp } from '../src/cli.js';
 
 // gws prints its consent URL to stdout and then waits on a loopback port. If we
 // fail to spot it, the user sees a hung command and no browser.
@@ -59,5 +59,41 @@ describe('assetUrl', () => {
     } finally {
       if (old === undefined) delete process.env.PS_MCP_RELEASE_BASE;
     }
+  });
+});
+
+// ~/.claude.json is 200 KB of Claude Code's own state -- startup counters,
+// cached feature flags, and every other MCP server the user has. Setup merges
+// one key into it. Dropping any of the rest would be silent and expensive.
+describe('withPsMcp', () => {
+  const existing = {
+    numStartups: 412,
+    tipsHistory: { a: 1 },
+    mcpServers: { railway: { command: '/usr/local/bin/railway' } },
+  };
+
+  it('adds ps-mcp without touching anything else', () => {
+    const next = withPsMcp(existing, '/opt/ps-mcp/launcher/ps-mcp-launch');
+    assert.equal(next.numStartups, 412);
+    assert.deepEqual(next.tipsHistory, { a: 1 });
+    assert.deepEqual(next.mcpServers.railway, { command: '/usr/local/bin/railway' });
+    assert.deepEqual(next.mcpServers['ps-mcp'], { command: '/opt/ps-mcp/launcher/ps-mcp-launch' });
+  });
+
+  it('does not mutate the config it was given', () => {
+    const before = JSON.stringify(existing);
+    withPsMcp(existing, '/somewhere/ps-mcp-launch');
+    assert.equal(JSON.stringify(existing), before);
+  });
+
+  it('creates mcpServers when the file has none', () => {
+    const next = withPsMcp({ numStartups: 1 }, '/x/ps-mcp-launch');
+    assert.deepEqual(next.mcpServers, { 'ps-mcp': { command: '/x/ps-mcp-launch' } });
+  });
+
+  it('replaces a stale ps-mcp path from an earlier install', () => {
+    const stale = { mcpServers: { 'ps-mcp': { command: '/old/path/ps-mcp-launch' } } };
+    const next = withPsMcp(stale, '/new/path/ps-mcp-launch');
+    assert.deepEqual(next.mcpServers['ps-mcp'], { command: '/new/path/ps-mcp-launch' });
   });
 });
