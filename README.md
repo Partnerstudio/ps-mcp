@@ -15,6 +15,32 @@ Design decisions live in `CLAUDE.md`. This file covers running it.
                                 path guard, S3 tools
     test/                       node:test, no framework
 
+## Installing
+
+On a Mac with nothing on it -- no Homebrew, no node, no Xcode Command Line
+Tools, no admin rights:
+
+    curl -fsSL https://raw.githubusercontent.com/Partnerstudio/ps-mcp/dev/install.sh | sh
+
+    # or a specific channel / location
+    curl -fsSL .../install.sh | sh -s -- --channel dev --prefix ~/tools/ps-mcp
+
+It fetches its own node and its own copy of the Google Workspace CLI, both
+pinned and checksum-verified, into one directory (`~/.local/ps-mcp` by default).
+Nothing is installed system-wide and nothing else on the machine is touched;
+deleting that directory uninstalls it.
+
+Then:
+
+    ps-mcp setup      wire up Claude Desktop and Codex
+    ps-mcp auth       sign in to Google in a browser
+    ps-mcp doctor     check everything
+
+and restart Claude Desktop.
+
+ffmpeg is not bundled. If it is on the machine the installer records it and the
+media tools work; if not, they are skipped with a warning saying so.
+
 ## Running
 
     npm ci

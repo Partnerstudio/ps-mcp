@@ -78,8 +78,12 @@ function channel() {
   }
 }
 
+let warnings = 0;
 const ok = (m) => console.log(`  \u001b[32mok\u001b[0m    ${m}`);
-const warn = (m) => console.log(`  \u001b[33mwarn\u001b[0m  ${m}`);
+const warn = (m) => {
+  warnings++;
+  console.log(`  \u001b[33mwarn\u001b[0m  ${m}`);
+};
 const bad = (m) => console.log(`  \u001b[31mFAIL\u001b[0m  ${m}`);
 
 function backup(file) {
@@ -359,7 +363,15 @@ function doctor() {
     failures++;
   }
 
-  console.log(failures === 0 ? '\nAll checks passed.' : `\n${failures} check(s) failed.`);
+  if (failures > 0) {
+    console.log(`\n${failures} check(s) failed, ${warnings} warning(s).`);
+  } else if (warnings > 0) {
+    // Saying everything passed while three warnings sit above it is how a health
+    // check stops being believed.
+    console.log(`\nNo failures, but ${warnings} warning(s) above - some tools will not work.`);
+  } else {
+    console.log('\nAll checks passed.');
+  }
   process.exitCode = failures === 0 ? 0 : 1;
 }
 
