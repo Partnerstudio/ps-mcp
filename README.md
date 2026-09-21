@@ -139,7 +139,11 @@ differently:
   flow. `ps-mcp auth` starts it. The resulting token is theirs, encrypted in
   their home directory, never shared. gws does need an OAuth *client* to exist
   before that flow can start -- that is the application's identity, not a user
-  credential, and it ships with the install.
+  credential -- and it does **not** ship with the install. A fresh install stops
+  at `ps-mcp auth` with "No OAuth client configured", naming the file it wants:
+  `~/.config/ps-mcp/gws/client_secret.json`. Until we decide how that file is
+  distributed, put it there by hand. `ps-mcp doctor` reports its absence
+  separately from "not signed in", because they need different fixes.
 - **Service access** (AWS) uses IAM credentials placed in `~/.aws/credentials`
   as a normal profile. Cloud API access is out of scope for now.
 
