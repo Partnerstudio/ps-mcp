@@ -229,13 +229,16 @@ read verbs and is `readOnly`, a write tool is not, and is `destructive` only
 where the service can actually delete.
 
 Eight further services exist in gws -- Chat, Meet, Forms, Keep, People, Apps
-Script, Admin Reports and Tasks -- but are **not generated**, because the
-credentials cannot reach them: most lack a granted OAuth scope, and Tasks, Keep
-and Apps Script also have their API disabled in the Cloud project. A tool that
-always fails is worse than an absent one, since the model cannot tell "not
+Script, Admin Reports and Tasks -- and are deliberately **not generated**.
+ps-mcp covers the everyday Workspace surface; the rest would each need OAuth
+scopes widened and, for some, an API enabled, and none has been judged worth it.
+Apps Script is parked rather than unwanted -- it reaches what the REST APIs
+cannot, but `run` executes code outside this server's sandbox.
+
+A tool that always fails is worse than an absent one: the model cannot tell "not
 permitted" from "wrong arguments" and burns turns retrying. `BLOCKED` in
-`tools/gen-gws-tools.mjs` lists one reason each; delete an entry and regenerate
-once the scope or API lands.
+`tools/gen-gws-tools.mjs` carries the reason for each; delete an entry and
+regenerate to bring one back.
 
 **`gws_schema`** returns the parameters and request body for any method, addressed
 as `service.resource.method` (e.g. `drive.files.list`). Use it rather than guessing.

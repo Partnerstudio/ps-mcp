@@ -51,21 +51,28 @@ const SERVICES = [
 // subscriptions, which are not useful here.
 const READ_ONLY_SERVICES = new Set(['admin-reports']);
 
-// Services deliberately not generated, with the reason. A tool that always fails
-// is worse than an absent one: the model cannot tell "not permitted here" from
-// "wrong arguments", and spends turns retrying. Delete an entry to re-enable it.
+// Services deliberately not generated. A tool that always fails is worse than an
+// absent one: the model cannot tell "not permitted here" from "wrong arguments",
+// and spends turns retrying. Delete an entry to re-enable it and regenerate.
 //
-// Scope gaps need the OAuth consent screen widened; API gaps
-// need `gcloud services enable`. Both are deliberately parked.
+// These are SCOPING DECISIONS, not unfinished work. ps-mcp covers the everyday
+// Workspace surface -- mail, calendar, drive, sheets, docs, slides. Each of
+// these would additionally need OAuth scopes widened and, for some, an API
+// enabled, and none was judged worth it.
 const BLOCKED = new Map([
-  ['chat', 'no chat scope granted (403)'],
-  ['meet', 'no meet scope granted (403)'],
-  ['forms', 'no forms scope granted (403)'],
-  ['keep', 'no keep scope granted (403), and keep.googleapis.com is disabled'],
-  ['people', 'no contacts scope granted (403)'],
-  ['script', 'no script scope granted, and script.googleapis.com is disabled'],
-  ['admin-reports', 'no admin.reports scope granted (403)'],
-  ['tasks', 'scope IS granted but tasks.googleapis.com is disabled'],
+  ['chat', 'not wanted for now'],
+  ['meet', 'not wanted for now'],
+  ['forms', 'not wanted for now'],
+  ['keep', 'not wanted for now'],
+  ['people', 'not wanted for now'],
+  ['admin-reports', 'not wanted for now'],
+  ['tasks', 'not wanted for now'],
+  // Parked rather than unwanted. Apps Script reaches what the REST APIs cannot
+  // -- Gmail filters, time-based triggers, custom Sheets functions -- but `run`
+  // executes code with the user's full Google permissions on Google's servers,
+  // outside this server's sandbox entirely. Worth revisiting deliberately, and
+  // `run` probably wants to be its own tool when it happens.
+  ['script', 'parked: needs script.googleapis.com enabled and scopes widened'],
 ]);
 // Read verbs match as PREFIXES, not exact names. Google routinely suffixes them:
 // listScriptProcesses, searchDirectoryPeople, batchGetByDataFilter are all reads,
