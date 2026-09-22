@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { assetUrl, extractAuthUrl, withPsMcp } from '../src/cli.js';
+import { assetUrl, extractAuthUrl, psMcpProjects, withPsMcp, withoutPsMcp } from '../src/cli.js';
 
 // gws prints its consent URL to stdout and then waits on a loopback port. If we
 // fail to spot it, the user sees a hung command and no browser.
@@ -63,37 +63,73 @@ describe('assetUrl', () => {
 });
 
 // ~/.claude.json is 200 KB of Claude Code's own state -- startup counters,
-// cached feature flags, and every other MCP server the user has. Setup merges
-// one key into it. Dropping any of the rest would be silent and expensive.
+// cached feature flags, and every other MCP server the user has. We merge one
+// key into one project entry. Dropping any of the rest would be silent and
+// expensive.
 describe('withPsMcp', () => {
+  const DIR = '/Users/x/dev/bizdev';
   const existing = {
     numStartups: 412,
-    tipsHistory: { a: 1 },
     mcpServers: { railway: { command: '/usr/local/bin/railway' } },
+    projects: {
+      '/Users/x/other': { hasTrustDialogAccepted: true, mcpServers: { cve: { command: '/x/cve' } } },
+    },
   };
 
-  it('adds ps-mcp without touching anything else', () => {
-    const next = withPsMcp(existing, '/opt/ps-mcp/launcher/ps-mcp-launch');
+  it('registers only under the project directory, never globally', () => {
+    const next = withPsMcp(existing, '/opt/ps-mcp/launcher/ps-mcp-launch', DIR);
+    assert.equal(next.mcpServers['ps-mcp'], undefined, 'a global entry would load the tools everywhere');
+    assert.equal(next.projects[DIR].mcpServers['ps-mcp'].command, '/opt/ps-mcp/launcher/ps-mcp-launch');
+  });
+
+  it('leaves every other key and every other project alone', () => {
+    const next = withPsMcp(existing, '/x/ps-mcp-launch', DIR);
     assert.equal(next.numStartups, 412);
-    assert.deepEqual(next.tipsHistory, { a: 1 });
     assert.deepEqual(next.mcpServers.railway, { command: '/usr/local/bin/railway' });
-    assert.deepEqual(next.mcpServers['ps-mcp'], { command: '/opt/ps-mcp/launcher/ps-mcp-launch' });
+    assert.deepEqual(next.projects['/Users/x/other'].mcpServers, { cve: { command: '/x/cve' } });
+    assert.equal(next.projects['/Users/x/other'].hasTrustDialogAccepted, true);
+  });
+
+  it('keeps the rest of an entry when the directory is already known', () => {
+    const known = { projects: { [DIR]: { lastCost: 1.5, mcpServers: { other: { command: '/o' } } } } };
+    const next = withPsMcp(known, '/x/ps-mcp-launch', DIR);
+    assert.equal(next.projects[DIR].lastCost, 1.5);
+    assert.deepEqual(next.projects[DIR].mcpServers.other, { command: '/o' });
   });
 
   it('does not mutate the config it was given', () => {
     const before = JSON.stringify(existing);
-    withPsMcp(existing, '/somewhere/ps-mcp-launch');
+    withPsMcp(existing, '/somewhere/ps-mcp-launch', DIR);
     assert.equal(JSON.stringify(existing), before);
   });
 
-  it('creates mcpServers when the file has none', () => {
-    const next = withPsMcp({ numStartups: 1 }, '/x/ps-mcp-launch');
-    assert.deepEqual(next.mcpServers, { 'ps-mcp': { command: '/x/ps-mcp-launch' } });
+  it('replaces a stale path from an earlier install', () => {
+    const stale = { projects: { [DIR]: { mcpServers: { 'ps-mcp': { command: '/old/ps-mcp-launch' } } } } };
+    const next = withPsMcp(stale, '/new/ps-mcp-launch', DIR);
+    assert.equal(next.projects[DIR].mcpServers['ps-mcp'].command, '/new/ps-mcp-launch');
+  });
+});
+
+describe('withoutPsMcp and psMcpProjects', () => {
+  const DIR = '/Users/x/dev/bizdev';
+
+  it('removes only our entry, leaving the directory and its other servers', () => {
+    const config = withPsMcp({ projects: { [DIR]: { lastCost: 2, mcpServers: { other: { command: '/o' } } } } }, '/l', DIR);
+    const next = withoutPsMcp(config, DIR);
+    assert.equal(next.projects[DIR].mcpServers['ps-mcp'], undefined);
+    assert.deepEqual(next.projects[DIR].mcpServers.other, { command: '/o' });
+    assert.equal(next.projects[DIR].lastCost, 2);
   });
 
-  it('replaces a stale ps-mcp path from an earlier install', () => {
-    const stale = { mcpServers: { 'ps-mcp': { command: '/old/path/ps-mcp-launch' } } };
-    const next = withPsMcp(stale, '/new/path/ps-mcp-launch');
-    assert.deepEqual(next.mcpServers['ps-mcp'], { command: '/new/path/ps-mcp-launch' });
+  it('is a no-op for a directory that never had it', () => {
+    const config = { projects: { [DIR]: { mcpServers: {} } } };
+    assert.equal(withoutPsMcp(config, DIR), config, 'same object, so nothing is rewritten');
+  });
+
+  it('lists the directories where ps-mcp is enabled, and no others', () => {
+    let config = { projects: { '/a': { mcpServers: { x: {} } } } };
+    config = withPsMcp(config, '/l', '/b');
+    config = withPsMcp(config, '/l', '/c');
+    assert.deepEqual(psMcpProjects(config), ['/b', '/c']);
   });
 });

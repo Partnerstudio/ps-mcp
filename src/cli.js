@@ -4,7 +4,7 @@ import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   accessSync, constants, copyFileSync, existsSync, mkdirSync,
-  readFileSync, renameSync, rmSync, writeFileSync,
+  readFileSync, realpathSync, renameSync, rmSync, writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
 import path from 'node:path';
@@ -128,27 +128,46 @@ function writeClaudeConfig() {
 
 // Claude Code keeps its MCP servers in ~/.claude.json, the same `mcpServers`
 // shape as Claude Desktop but in a much larger file that also holds startup
-// counters, cached feature flags and every other server. Merge one key and
-// leave the rest of the document exactly as it was.
-export function withPsMcp(config, launcher) {
-  const next = { ...config, mcpServers: { ...(config.mcpServers ?? {}) } };
-  next.mcpServers['ps-mcp'] = { command: launcher };
-  return next;
+// counters, cached feature flags and every other server.
+//
+// We only ever register per project directory, under `projects[dir]`. A global
+// registration would put all 30 tools -- about 6,300 tokens -- into the system
+// prompt of every Claude Code session on the machine, including the ones that
+// have nothing to do with mail or calendars. Scoping is the whole point.
+//
+// Not `.mcp.json` either: that file is meant to be committed, and the launcher
+// path in it is absolute and machine-specific, so it would be wrong for anyone
+// who cloned the repo.
+export function withPsMcp(config, launcher, project) {
+  const projects = { ...(config.projects ?? {}) };
+  const entry = projects[project] ?? {};
+  projects[project] = {
+    ...entry,
+    mcpServers: { ...(entry.mcpServers ?? {}), 'ps-mcp': { type: 'stdio', command: launcher, args: [], env: {} } },
+  };
+  return { ...config, projects };
 }
 
-function writeClaudeCodeConfig() {
-  // A Mac with only Claude Desktop is a normal setup, so absence is not a
-  // failure -- and we do not create config for an app that is not installed.
-  if (!existsSync(CLAUDE_CODE_CFG) && !existsSync(path.join(homedir(), '.claude'))) {
-    return 'not installed';
-  }
-  const config = existsSync(CLAUDE_CODE_CFG)
-    ? JSON.parse(readFileSync(CLAUDE_CODE_CFG, 'utf8'))
-    : {};
-  const before = JSON.stringify(config.mcpServers?.['ps-mcp'] ?? null);
-  const next = withPsMcp(config, LAUNCHER);
-  if (before === JSON.stringify(next.mcpServers['ps-mcp'])) return 'unchanged';
+export function withoutPsMcp(config, project) {
+  const entry = config.projects?.[project];
+  if (!entry?.mcpServers?.['ps-mcp']) return config;
+  const mcpServers = { ...entry.mcpServers };
+  delete mcpServers['ps-mcp'];
+  return { ...config, projects: { ...config.projects, [project]: { ...entry, mcpServers } } };
+}
 
+export function psMcpProjects(config) {
+  return Object.entries(config.projects ?? {})
+    .filter(([, v]) => v && v.mcpServers && v.mcpServers['ps-mcp'])
+    .map(([dir]) => dir)
+    .sort();
+}
+
+const readClaudeCode = () => (existsSync(CLAUDE_CODE_CFG)
+  ? JSON.parse(readFileSync(CLAUDE_CODE_CFG, 'utf8'))
+  : null);
+
+function saveClaudeCode(next) {
   if (existsSync(CLAUDE_CODE_CFG)) backup(CLAUDE_CODE_CFG);
   // Claude Code rewrites this file while it is running. Write a temp file and
   // rename, so an interrupted write cannot leave it truncated -- losing this
@@ -156,7 +175,49 @@ function writeClaudeCodeConfig() {
   const tmp = `${CLAUDE_CODE_CFG}.ps-mcp.tmp`;
   writeFileSync(tmp, `${JSON.stringify(next, null, 2)}\n`);
   renameSync(tmp, CLAUDE_CODE_CFG);
-  return 'written';
+}
+
+function projectCommand() {
+  const sub = process.argv[3] ?? 'list';
+  const config = readClaudeCode();
+  if (!config) {
+    console.log('Claude Code is not installed on this Mac (no ~/.claude.json).');
+    return;
+  }
+  if (sub === 'list') {
+    const dirs = psMcpProjects(config);
+    if (!dirs.length) {
+      console.log('\nps-mcp is not enabled for any project directory.\n');
+      console.log('  ps-mcp project add [DIR]    enable it for DIR (default: this directory)\n');
+      return;
+    }
+    console.log('\nps-mcp is enabled in Claude Code for:\n');
+    for (const d of dirs) console.log(`  ${d}`);
+    console.log('');
+    return;
+  }
+  if (sub !== 'add' && sub !== 'remove') {
+    console.log('usage: ps-mcp project <list|add|remove> [DIR]');
+    process.exitCode = 1;
+    return;
+  }
+  const given = process.argv[4] ?? process.cwd();
+  let dir;
+  try {
+    dir = realpathSync(given);
+  } catch {
+    bad(`no such directory: ${given}`);
+    process.exitCode = 1;
+    return;
+  }
+  const next = sub === 'add' ? withPsMcp(config, LAUNCHER, dir) : withoutPsMcp(config, dir);
+  if (JSON.stringify(next) === JSON.stringify(config)) {
+    ok(`${dir}: already ${sub === 'add' ? 'enabled' : 'absent'}`);
+    return;
+  }
+  saveClaudeCode(next);
+  ok(`${sub === 'add' ? 'enabled' : 'removed'} ps-mcp for ${dir}`);
+  if (sub === 'add') console.log('\n  Start Claude Code in that directory to pick it up.\n');
 }
 
 function writeCodexConfig() {
@@ -187,7 +248,13 @@ function setup() {
   }
   ok(`Claude Desktop config ${writeClaudeConfig()}`);
   ok(`Codex config ${writeCodexConfig()}`);
-  ok(`Claude Code config ${writeClaudeCodeConfig()}`);
+  // Claude Code is deliberately not wired up globally here. See withPsMcp.
+  if (existsSync(CLAUDE_CODE_CFG)) {
+    const dirs = psMcpProjects(JSON.parse(readFileSync(CLAUDE_CODE_CFG, 'utf8')));
+    ok(dirs.length
+      ? `Claude Code enabled for ${dirs.length} project director${dirs.length === 1 ? 'y' : 'ies'}`
+      : 'Claude Code found - run `ps-mcp project add DIR` where you want the tools');
+  }
   console.log('\nNext:');
   console.log('  ps-mcp auth      sign in to Google in a browser');
   console.log('  ps-mcp doctor    check everything is wired up');
@@ -404,11 +471,13 @@ function doctor() {
     else warn(`${label} not configured - run \`ps-mcp setup\``);
   }
 
-  // Claude Code is optional, so a missing config is only worth mentioning when
-  // the app is actually there.
+  // Claude Code registers per directory, so "configured" is a list, not a flag.
   if (!existsSync(CLAUDE_CODE_CFG)) ok('Claude Code not installed, nothing to configure');
-  else if (readFileSync(CLAUDE_CODE_CFG, 'utf8').includes('"ps-mcp"')) ok('Claude Code configured');
-  else warn('Claude Code not configured - run `ps-mcp setup`');
+  else {
+    const dirs = psMcpProjects(JSON.parse(readFileSync(CLAUDE_CODE_CFG, 'utf8')));
+    if (dirs.length) ok(`Claude Code enabled in ${dirs.length} project director${dirs.length === 1 ? 'y' : 'ies'}`);
+    else ok('Claude Code installed, no project directories enabled (`ps-mcp project add DIR`)');
+  }
 
   try {
     accessSync(LAUNCHER, constants.X_OK);
@@ -799,13 +868,14 @@ function usageReport() {
   console.log('');
 }
 
-const COMMANDS = { setup, auth, doctor, channel, update, rollback, usage: usageReport, serve: () => spawnSync(LAUNCHER, { stdio: 'inherit' }) };
+const COMMANDS = { setup, auth, doctor, channel, update, rollback, usage: usageReport, project: projectCommand, serve: () => spawnSync(LAUNCHER, { stdio: 'inherit' }) };
 const command = process.argv[2];
 if (!command || !COMMANDS[command]) {
   console.log('usage: ps-mcp <setup|auth|doctor|serve>');
   console.log('       ps-mcp channel [dev|beta|stable]');
   console.log('       ps-mcp update [--check]');
   console.log('       ps-mcp usage [--since YYYY-MM-DD] [--by-tool|--by-domain] [--json]');
+  console.log('       ps-mcp project <list|add|remove> [DIR]');
   console.log('       ps-mcp rollback');
   process.exitCode = command ? 1 : 0;
 } else {

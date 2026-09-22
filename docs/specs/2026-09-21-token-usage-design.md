@@ -75,18 +75,26 @@ the client records usage:
 
 | Client | ps-mcp configured | Tokens recorded | Tool spend attributable |
 |---|---|---|---|
-| Claude Code | yes, since `setup` writes `~/.claude.json` | yes | **yes** |
+| Claude Code | per directory, via `ps-mcp project add` | yes | **yes, in those directories** |
 | Codex | yes | yes | **yes** |
 | Claude Desktop | yes | no | no |
 
-`ps-mcp setup` configures Claude Code for exactly this reason. It is optional:
-where Claude Code is not installed the step reports `not installed` and nothing
-is created.
+Claude Code registration is **per project directory**, written under
+`projects[dir]` in `~/.claude.json` by `ps-mcp project add`. `setup` does not
+do it globally, and this is a cost decision rather than a stylistic one: the 30
+tools are about 25 KB of JSON, roughly 6,300 tokens, added to the system prompt
+of every session in scope. Registering globally would charge that to every
+Claude Code session on the machine, including the ones with nothing to do with
+mail or calendars -- an odd way to run a project whose purpose is measuring
+cost. Scoped, it is paid only where the tools are wanted.
 
-The cost of that decision is honest and measurable: ps-mcp's 30 tools add about
-25 KB of JSON, roughly 6,300 tokens, to the tool list of every Claude Code
-session. It is cached after the first turn, but it is not free, and it is a
-cost incurred in order to measure costs.
+Not `.mcp.json` either. That file is meant to be committed, and the launcher
+path it would carry is absolute and machine-specific, so it would be wrong for
+anyone who cloned the repository.
+
+The consequence for measurement: tool spend is attributable in the directories
+you enable, and nowhere else. A pilot should enable the directories where the
+work actually happens and say which those were.
 
 ## Architecture
 
