@@ -115,18 +115,18 @@ function backup(file) {
 
 function writeClaudeConfig() {
   mkdirSync(path.dirname(CLAUDE_CFG), { recursive: true });
-  let config = {};
-  if (existsSync(CLAUDE_CFG)) {
-    const saved = backup(CLAUDE_CFG);
-    config = JSON.parse(readFileSync(CLAUDE_CFG, 'utf8'));
-    console.log(`  backed up ${path.basename(saved)}`);
-  }
+  const exists = existsSync(CLAUDE_CFG);
+  const config = exists ? JSON.parse(readFileSync(CLAUDE_CFG, 'utf8')) : {};
   config.mcpServers = config.mcpServers ?? {};
   const before = JSON.stringify(config.mcpServers['ps-mcp'] ?? null);
   config.mcpServers['ps-mcp'] = { command: LAUNCHER };
+  // The installer runs setup on every upgrade; rewriting an unchanged file
+  // would leave one more .bak behind each time.
+  if (before === JSON.stringify(config.mcpServers['ps-mcp'])) return 'unchanged';
+  if (exists) console.log(`  backed up ${path.basename(backup(CLAUDE_CFG))}`);
   // JSON.stringify leaves non-ASCII alone, so Norwegian paths survive intact.
   writeFileSync(CLAUDE_CFG, `${JSON.stringify(config, null, 2)}\n`);
-  return before === JSON.stringify(config.mcpServers['ps-mcp']) ? 'unchanged' : 'written';
+  return 'written';
 }
 
 // Claude Code keeps its MCP servers in ~/.claude.json, the same `mcpServers`
@@ -380,6 +380,9 @@ function gwsAuthState(gws) {
 }
 
 function doctor() {
+  // doctor reports every problem itself, in words; the server's JSON log lines
+  // would only repeat them. An explicit PS_MCP_LOG_LEVEL still wins.
+  process.env.PS_MCP_LOG_LEVEL ??= 'error';
   console.log('ps-mcp doctor\n');
   let failures = 0;
 

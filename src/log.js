@@ -1,9 +1,10 @@
 // Logs go to stderr only. stdout carries JSON-RPC and nothing else.
 const LEVELS = { error: 0, warn: 1, info: 2, debug: 3 };
-const threshold = LEVELS[process.env.PS_MCP_LOG_LEVEL] ?? LEVELS.info;
 
+// Read per call, not at import: imports run before any caller's code, so a
+// threshold fixed at load could never be lowered by `ps-mcp doctor`.
 function emit(level, msg, fields) {
-  if (LEVELS[level] > threshold) return;
+  if (LEVELS[level] > (LEVELS[process.env.PS_MCP_LOG_LEVEL] ?? LEVELS.info)) return;
   const line = { ts: new Date().toISOString(), level, msg, ...fields };
   process.stderr.write(`${JSON.stringify(line)}\n`);
 }
