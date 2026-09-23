@@ -29,16 +29,13 @@ Tools, no admin rights:
 
 It fetches its own node and its own copy of the Google Workspace CLI, both
 pinned and checksum-verified, into one directory (`~/.local/ps-mcp` by default).
-Nothing is installed system-wide and nothing else on the machine is touched;
-deleting that directory uninstalls it.
+Nothing is installed system-wide.
 
-Then:
-
-    ps-mcp setup      wire up Claude Desktop and Codex
-    ps-mcp auth       sign in to Google in a browser
-    ps-mcp doctor     check everything
-
-and restart Claude Desktop.
+It then carries on by itself: links `ps-mcp` into `~/.local/bin` (adding that
+to PATH in `~/.zprofile` if needed), runs `ps-mcp setup` to wire up Claude
+Desktop and Codex, runs `ps-mcp auth` to sign in to Google if
+`~/.config/ps-mcp/gws/client_secret.json` is in place and nobody is signed in
+yet, and finishes with `ps-mcp doctor`. Restart Claude Desktop afterwards.
 
 ffmpeg is not bundled. If it is on the machine the installer records it and the
 media tools work; if not, they are skipped with a warning saying so.

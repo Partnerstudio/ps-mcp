@@ -14,30 +14,53 @@ you, however small.
 - A Mac. Nothing has to be installed on it: no Homebrew, no node, no Xcode
   Command Line Tools. You do not need admin rights and you will not be asked
   for a password.
+- Claude Desktop, installed from https://claude.ai/download and signed in.
 - Your Schibsted Google account.
 - `client_secret.json`, which Johan will send you separately. This is the
   *application's* identity -- it is not your login and it is not a password.
-  You still sign in as yourself in step 4.
+  You still sign in as yourself.
 
-## 1. Install
+Everything below is typed into Terminal (Cmd-Space, type "Terminal").
+
+## 1. Put the OAuth client in place
+
+Save `client_secret.json` to your Downloads folder, then:
+
+    mkdir -p ~/.config/ps-mcp/gws
+    mv ~/Downloads/client_secret.json ~/.config/ps-mcp/gws/
+
+If your browser saved it as `client_secret (1).json` or similar, rename it to
+exactly `client_secret.json`. We have not yet decided how this file should be
+distributed, which is part of what this test is for.
+
+## 2. Install
+
+Quit Claude Desktop first (Cmd-Q), then:
 
     curl -fsSL https://raw.githubusercontent.com/Partnerstudio/ps-mcp/stable/install.sh | sh
 
-It downloads its own node and its own copy of the Google Workspace CLI, checks
-both against published checksums, and puts everything in `~/.local/ps-mcp`.
-Nothing is installed system-wide. Deleting that one directory uninstalls it.
+This does everything in one go:
 
-## 2. Wire up the clients
+- downloads its own node and its own copy of the Google Workspace CLI, checks
+  both against published checksums, and puts everything in `~/.local/ps-mcp`.
+  Nothing is installed system-wide.
+- adds the `ps-mcp` command, and a line to `~/.zprofile` so new Terminal
+  windows find it.
+- wires up Claude Desktop and Codex, backing up any config it changes.
+- opens a browser to sign in to Google. Choose your `@schibsted.no` account
+  and accept the consent screen. The token is encrypted in your home directory
+  and is yours alone.
+- ends with `ps-mcp doctor`, a check of everything.
 
-    ~/.local/ps-mcp/bin/ps-mcp setup
+**Please tell us exactly what the consent screen said**, including any warning
+about the app being unverified, and whether it let you through. This is the
+step most likely to behave differently for you than it did for us.
 
-This edits `~/Library/Application Support/Claude/claude_desktop_config.json`
-and `~/.codex/config.toml`, backing up anything it replaces.
-
-Close those apps before running it, so nothing is writing to the same files.
+If you skipped step 1, the installer finishes without signing in and tells
+you what to do; after placing the file, run `~/.local/bin/ps-mcp auth`.
 
 **Claude Code is separate, and per directory.** If you use it, enable ps-mcp
-only where you want the tools:
+only where you want the tools (in a new Terminal window):
 
     ps-mcp project add ~/some/work/dir     # or no argument, for this directory
     ps-mcp project list
@@ -45,36 +68,11 @@ only where you want the tools:
 Registering it everywhere would add ~6,300 tokens to every Claude Code session
 on your Mac, including ones that have nothing to do with mail or calendars.
 
-If `~/.local/bin` is on your PATH the installer also linked `ps-mcp` there, so
-you can drop the long prefix from here on.
+## 3. Check
 
-## 3. Put the OAuth client in place
-
-    mkdir -p ~/.config/ps-mcp/gws
-    mv ~/Downloads/client_secret.json ~/.config/ps-mcp/gws/
-
-Do this **before** step 4. Without it, `ps-mcp auth` stops with "No OAuth
-client configured". That is expected for now, not a bug -- we have not yet
-decided how this file should be distributed, which is part of what this test
-is for.
-
-## 4. Sign in
-
-    ps-mcp auth
-
-A browser opens. Choose your `@schibsted.no` account and accept the consent
-screen. The token is encrypted in your home directory and is yours alone.
-
-**Please tell us exactly what the consent screen said**, including any warning
-about the app being unverified, and whether it let you through. This is the
-step most likely to behave differently for you than it did for us.
-
-## 5. Check
-
-    ps-mcp doctor
-
-On a Mac with no Homebrew and no AWS credentials, a good result looks like
-this -- three warnings, no failures:
+The installer's last step is `ps-mcp doctor`; you can re-run it any time. On a
+Mac with no Homebrew and no AWS credentials, a good result looks like this --
+three warnings, no failures:
 
     ps-mcp doctor
 
@@ -102,9 +100,10 @@ this -- three warnings, no failures:
 Those three warnings are correct on a clean machine and are explained under
 "Known gaps" below. Anything marked `FAIL` is a real problem.
 
-## 6. Restart Claude Desktop and try it
+## 4. Open Claude Desktop and try it
 
-Quit Claude Desktop completely and reopen it. Then ask for something ordinary:
+Open Claude Desktop (or, if it was running, quit it completely and reopen
+it). Then ask for something ordinary:
 
 - "What's on my calendar tomorrow?"
 - "Find the last email from <someone> and summarise it."
@@ -113,7 +112,7 @@ Quit Claude Desktop completely and reopen it. Then ask for something ordinary:
 ## What to send back
 
 1. The full output of `ps-mcp doctor`.
-2. What the consent screen said in step 4, and whether it let you through.
+2. What the consent screen said in step 2, and whether it let you through.
 3. Anything that failed, with the exact message -- copied, not described.
 4. Whether Claude Desktop actually lists the tools after restarting.
 5. Any point where these instructions did not match what you saw.
@@ -130,10 +129,11 @@ Quit Claude Desktop completely and reopen it. Then ask for something ordinary:
 
 ## Uninstall
 
-    rm -rf ~/.local/ps-mcp ~/.config/ps-mcp ~/.local/bin/ps-mcp
+First `ps-mcp project remove DIR` for any directory you enabled, then:
 
-Then `ps-mcp project remove DIR` for any directory you enabled, and remove the
-`ps-mcp` entry from
+    rm -rf ~/.local/ps-mcp ~/.local/ps-mcp.old ~/.config/ps-mcp ~/.local/bin/ps-mcp
+
+and remove the `ps-mcp` entry from
 `~/Library/Application Support/Claude/claude_desktop_config.json` and the
-`[mcp_servers.ps-mcp]` block from `~/.codex/config.toml`. Backups sit next to
-the originals.
+`[mcp_servers.ps-mcp]` block from `~/.codex/config.toml`, and the line ending
+`# added by ps-mcp` from `~/.zprofile`. Backups sit next to the originals.

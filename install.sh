@@ -7,7 +7,9 @@
 # Assumes nothing but macOS. A fresh Mac has no node, no gws and no Homebrew, so
 # this fetches its own -- pinned and checksum-verified -- into one directory that
 # you can delete to uninstall. No admin, no Xcode Command Line Tools, nothing
-# installed system-wide and nothing else on the machine changed.
+# installed system-wide. Outside that directory it adds ~/.local/bin/ps-mcp and
+# one PATH line to your shell profile, then runs setup, which wires up the MCP
+# clients, and signs you in to Google if the OAuth client is in place.
 set -eu
 
 CHANNEL=stable
@@ -127,15 +129,46 @@ done
 printf '%s\n' "$CHANNEL" > "$PREFIX/etc/channel"
 
 # A CLI on PATH is a convenience; the MCP clients are wired with absolute paths
-# and do not depend on it.
-if [ -d "$HOME/.local/bin" ]; then
-  ln -sf "$PREFIX/bin/ps-mcp" "$HOME/.local/bin/ps-mcp"
-  say "linked $HOME/.local/bin/ps-mcp"
-fi
+# and do not depend on it. A fresh Mac has no ~/.local/bin, and nothing puts it
+# on PATH, so both are done here -- once, with a marked line.
+mkdir -p "$HOME/.local/bin"
+ln -sf "$PREFIX/bin/ps-mcp" "$HOME/.local/bin/ps-mcp"
+say "linked $HOME/.local/bin/ps-mcp"
+case ":$PATH:" in
+  *":$HOME/.local/bin:"*) ;;
+  *)
+    case "${SHELL:-}" in */bash) PROFILE="$HOME/.bash_profile" ;; *) PROFILE="$HOME/.zprofile" ;; esac
+    if ! grep -qs '# added by ps-mcp' "$PROFILE"; then
+      printf '\nexport PATH="$HOME/.local/bin:$PATH"  # added by ps-mcp\n' >> "$PROFILE"
+      say "added ~/.local/bin to PATH in $PROFILE (takes effect in new Terminal windows)"
+    fi ;;
+esac
 
 printf '\ninstalled %s (%s)\n\n' "$BUILD" "$CHANNEL"
-printf 'Next:\n'
-printf '  %s/bin/ps-mcp setup     wire up Claude Desktop and Codex\n' "$PREFIX"
-printf '  %s/bin/ps-mcp auth      sign in to Google in a browser\n' "$PREFIX"
-printf '  %s/bin/ps-mcp doctor    check everything\n' "$PREFIX"
-printf '\nthen restart Claude Desktop.\n\n'
+
+# --- set up ------------------------------------------------------------------
+# Run the follow-up steps rather than listing them. Under `curl | sh` the rest of
+# this script is still arriving on stdin, so no child may read it: each gets
+# /dev/null, or the terminal where it might need one.
+PS_MCP="$PREFIX/bin/ps-mcp"
+GWS_DIR="${PS_MCP_GWS_DIR:-$HOME/.config/ps-mcp/gws}"
+"$PS_MCP" setup </dev/null || say "(setup failed; re-run: ~/.local/bin/ps-mcp setup)"
+printf '\n'
+
+if [ -f "$GWS_DIR/credentials.enc" ]; then
+  say "Google: already signed in"
+elif [ ! -f "$GWS_DIR/client_secret.json" ]; then
+  mkdir -p "$GWS_DIR"
+  say "Google sign-in needs client_secret.json, which you get from Johan."
+  say "Put it in place, then sign in:"
+  say "  mv ~/Downloads/client_secret.json ~/.config/ps-mcp/gws/"
+  say "  ~/.local/bin/ps-mcp auth"
+elif (: </dev/tty) 2>/dev/null; then
+  "$PS_MCP" auth </dev/tty || say "(sign-in did not finish; re-run: ~/.local/bin/ps-mcp auth)"
+else
+  say "no terminal to sign in from; run: ~/.local/bin/ps-mcp auth"
+fi
+printf '\n'
+
+"$PS_MCP" doctor </dev/null || true
+printf '\nDone. Quit Claude Desktop completely (Cmd-Q) and reopen it.\n\n'
