@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { assetUrl, extractAuthUrl, psMcpProjects, withPsMcp, withoutPsMcp } from '../src/cli.js';
+import path from 'node:path';
+import { GWS_ENV, assetUrl, extractAuthUrl, psMcpProjects, withPsMcp, withoutPsMcp } from '../src/cli.js';
 
 // gws prints its consent URL to stdout and then waits on a loopback port. If we
 // fail to spot it, the user sees a hung command and no browser.
@@ -131,5 +132,14 @@ describe('withoutPsMcp and psMcpProjects', () => {
     config = withPsMcp(config, '/l', '/b');
     config = withPsMcp(config, '/l', '/c');
     assert.deepEqual(psMcpProjects(config), ['/b', '/c']);
+  });
+});
+
+// gws is an npm package whose bin starts `#!/usr/bin/env node`. On a fresh Mac the
+// only node is the one the installer bundled, which is not on the user's PATH,
+// so `ps-mcp auth` died with "env: node: No such file or directory".
+describe('GWS_ENV', () => {
+  it('puts the node we run as first on PATH', () => {
+    assert.equal(GWS_ENV.PATH.split(':')[0], path.dirname(process.execPath));
   });
 });

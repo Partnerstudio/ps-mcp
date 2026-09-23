@@ -24,8 +24,11 @@ const APP_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 // the server does. Worse, gws deletes credentials it cannot decrypt, so a CLI
 // call under the wrong backend destroys the server's login.
 const GWS_DIR = process.env.PS_MCP_GWS_DIR ?? path.join(homedir(), '.config', 'ps-mcp', 'gws');
-const GWS_ENV = {
+export const GWS_ENV = {
   ...process.env,
+  // gws starts `#!/usr/bin/env node`, and on a fresh Mac the only node is the
+  // bundled one we are running as, which is not on the user's PATH.
+  PATH: [path.dirname(process.execPath), process.env.PATH].filter(Boolean).join(':'),
   GOOGLE_WORKSPACE_CLI_KEYRING_BACKEND: 'file',
   // Must match launcher/ps-mcp-launch exactly. If the CLI and the server use
   // different directories, `ps-mcp auth` signs in somewhere the server never
